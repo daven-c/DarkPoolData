@@ -61,7 +61,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment Variables
-Copy and fill in your API credentials in the configuration file located at `backend/.env`:
+Copy and fill in your API credentials in the configuration file located at `.env`:
 
 ```env
 # Massive.com API Key (formerly Polygon.io)
