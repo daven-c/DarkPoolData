@@ -1,0 +1,2 @@
+# Placeholder to keep the data directory structure in Git.
+# Actual data files (.csv, .parquet) are ignored via .gitignore.

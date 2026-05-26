@@ -1,0 +1,107 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.23.8",
+    "script_metadata_hash": null
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "4552b53cddf20a92d4559b4de7a86c98",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "54c83078baa45bff6ce6251626715b36",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"massivecom-csv-data-downloader-viewer\">\ud83d\udce5 Massive.com CSV Data Downloader &amp; Viewer</h1>\n<span class=\"paragraph\">This notebook allows you to download historical trade-level tick data (including FINRA TRF off-exchange/dark pool trades) directly from Massive.com and save it locally as CSV files in the <code>data/</code> folder. It also provides an interactive viewer to inspect and analyze saved data.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "0314d4db32360055b5abafd56790706d",
+      "outputs": [
+        {
+          "type": "error",
+          "ename": "exception",
+          "evalue": "text.__init__() got an unexpected keyword argument 'password'",
+          "traceback": null
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stderr",
+          "text": "<span class=\"codehilite\"><div class=\"highlight\"><pre><span></span><span class=\"gt\">Traceback (most recent call last):</span>\n  File <span class=\"nb\">&quot;/var/folders/t6/kvh4s83974131dvzshnx1j340000gn/T/marimo_6750/__marimo__cell_vblA_.py&quot;</span>, line <span class=\"m\">2</span>, in <span class=\"n\">&lt;module&gt;</span>\n<span class=\"w\">    </span><span class=\"n\">api_key_input</span> <span class=\"o\">=</span> <span class=\"n\">mo</span><span class=\"o\">.</span><span class=\"n\">ui</span><span class=\"o\">.</span><span class=\"n\">text</span><span class=\"p\">(</span><span class=\"n\">value</span><span class=\"o\">=</span><span class=\"n\">default_api_key</span><span class=\"p\">,</span> <span class=\"n\">label</span><span class=\"o\">=</span><span class=\"s2\">&quot;Massive.com API Key&quot;</span><span class=\"p\">,</span> <span class=\"n\">password</span><span class=\"o\">=</span><span class=\"kc\">True</span><span class=\"p\">)</span>\n<span class=\"gr\">TypeError</span>: <span class=\"n\">text.__init__() got an unexpected keyword argument &#39;password&#39;</span>\n</pre></div>\n</span>",
+          "mimetype": "application/vnd.marimo+traceback"
+        }
+      ]
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "6f85121bdbf8da28f2256bb6c2613b8b",
+      "outputs": [
+        {
+          "type": "error",
+          "ename": "exception",
+          "evalue": "An ancestor raised an exception (TypeError): ",
+          "traceback": null
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "033570646953c9d11d2fddc1690391f2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"local-file-explorer-viewer\">\ud83d\udcca Local File Explorer &amp; Viewer</h3></span><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">No CSV files found in the <code>data/</code> directory. Download one above first!</span></span></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "5073d71cdbb9a841caefdd7a031e87d9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "a74f05e2438fc53e9eccd5a582b73d89",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}
