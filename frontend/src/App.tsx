@@ -18,7 +18,9 @@ import {
   CartesianGrid,
   Cell,
   PieChart,
-  Pie
+  Pie,
+  ReferenceLine,
+  Legend
 } from "recharts";
 
 const API_BASE = "http://localhost:8000/api/v1";
@@ -41,7 +43,6 @@ export default function App() {
   const [btEndDate, setBtEndDate] = useState("2026-05-20");
   const [btStrategy, setBtStrategy] = useState("dark_pool_spike");
   const [btThreshold, setBtThreshold] = useState(0.40);
-  const [btHoldingPeriod, setBtHoldingPeriod] = useState(5);
   const [btLoading, setBtLoading] = useState(false);
   const [btResults, setBtResults] = useState<any>(null);
   const [btError, setBtError] = useState("");
@@ -102,8 +103,7 @@ export default function App() {
       end_date: btEndDate,
       strategy_name: btStrategy,
       strategy_params: btStrategy === "dark_pool_spike" ? {
-        dark_ratio_threshold: Number(btThreshold),
-        holding_period: Number(btHoldingPeriod)
+        dark_ratio_threshold: Number(btThreshold)
       } : {
         fast_period: 10,
         slow_period: 30
@@ -170,7 +170,7 @@ export default function App() {
         {/* Navigation Tabs */}
         <nav style={{ display: "flex", gap: "8px" }}>
           <button className={`tab-btn ${activeTab === "backtester" ? "active" : ""}`} onClick={() => setActiveTab("backtester")}>
-            <BarChart3 size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} /> Backtest Engine
+            <BarChart3 size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} /> Indicator Visualizer
           </button>
           <button className={`tab-btn ${activeTab === "scanner" ? "active" : ""}`} onClick={() => setActiveTab("scanner")}>
             <TrendingUp size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} /> Dark Pool Scanner
@@ -393,24 +393,24 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW 3: BACKTESTER */}
+        {/* VIEW 3: INDICATOR VISUALIZER */}
         {activeTab === "backtester" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px", alignItems: "stretch" }}>
               {/* Form configuration panel */}
               <div className="glass-panel" style={{ padding: "24px" }}>
-                <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "20px" }}>Simulate Strategy Performance</h3>
+                <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "20px" }}>Configure Indicator Visualizer</h3>
                 <form onSubmit={runBacktester} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "20px", alignItems: "flex-end" }}>
                   
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <label style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Assets (Comma-separated)</label>
+                    <label style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Asset Symbol</label>
                     <input 
                       type="text" 
                       className="input-field" 
                       value={btSymbols} 
                       onChange={(e) => setBtSymbols(e.target.value)} 
-                      placeholder="AAPL, MSFT"
+                      placeholder="AAPL"
                       required
                     />
                   </div>
@@ -438,47 +438,35 @@ export default function App() {
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <label style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Trading Strategy</label>
+                    <label style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Analysis Indicator</label>
                     <select 
                       className="input-field" 
                       value={btStrategy} 
                       onChange={(e) => setBtStrategy(e.target.value)}
                       style={{ background: "#0a0f1d" }}
                     >
-                      <option value="dark_pool_spike">Dark Pool Spike Strategy</option>
-                      <option value="sma_cross">SMA Golden Cross Strategy</option>
+                      <option value="dark_pool_spike">Dark Pool Spikes & Ratio</option>
+                      <option value="sma_cross">SMA Golden/Death Crossover</option>
                     </select>
                   </div>
 
                   {btStrategy === "dark_pool_spike" && (
-                    <>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                        <label style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Dark Ratio Threshold</label>
-                        <input 
-                          type="number" 
-                          step="0.05"
-                          min="0.1"
-                          max="0.9"
-                          className="input-field" 
-                          value={btThreshold} 
-                          onChange={(e) => setBtThreshold(Number(e.target.value))}
-                        />
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                        <label style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Holding Period (Days)</label>
-                        <input 
-                          type="number" 
-                          min="1"
-                          className="input-field" 
-                          value={btHoldingPeriod} 
-                          onChange={(e) => setBtHoldingPeriod(Number(e.target.value))}
-                        />
-                      </div>
-                    </>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <label style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Dark Ratio Threshold</label>
+                      <input 
+                        type="number" 
+                        step="0.05"
+                        min="0.1"
+                        max="0.9"
+                        className="input-field" 
+                        value={btThreshold} 
+                        onChange={(e) => setBtThreshold(Number(e.target.value))}
+                      />
+                    </div>
                   )}
 
                   <button type="submit" className="btn-primary" style={{ height: "40px", justifyContent: "center" }} disabled={btLoading}>
-                    <Play size={16} /> {btLoading ? "Calculating..." : "Execute Simulation"}
+                    <Play size={16} /> {btLoading ? "Calculating..." : "Generate Visualizations"}
                   </button>
                 </form>
               </div>
@@ -523,58 +511,63 @@ export default function App() {
               </div>
             )}
 
-            {/* Backtest Results Dashboard */}
+            {/* Analysis Results Dashboard */}
             {btResults && (
               <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                 
                 {/* Mode description alert */}
                 <div className="glass-panel" style={{ padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: "0.85rem", color: "hsl(var(--text-muted))" }}>
-                    Simulation Data Source: <strong style={{ color: "#a78bfa" }}>{btResults.data_source}</strong>
+                    Indicator Data Source: <strong style={{ color: "#a78bfa" }}>{btResults.data_source}</strong>
                   </span>
-                  <span className="badge badge-success">Finished</span>
+                  <span className="badge badge-success">Ingestion Complete</span>
                 </div>
 
-                {/* Backtester KPIs */}
+                {/* Indicator KPIs */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "20px" }}>
                   <div className="glass-panel" style={{ padding: "20px" }}>
-                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Final Valuation</span>
+                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Average Price</span>
                     <h3 style={{ fontSize: "1.8rem", fontWeight: 700, fontFamily: "var(--font-display)", marginTop: "4px" }}>
-                      ${btResults.metrics.final_value.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      ${btResults.metrics.avg_price.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                     </h3>
                   </div>
                   <div className="glass-panel" style={{ padding: "20px" }}>
-                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Total Return</span>
+                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>
+                      {btStrategy === "dark_pool_spike" ? "Max Dark Pool Ratio" : "Max Fast SMA"}
+                    </span>
                     <h3 style={{ 
                       fontSize: "1.8rem", 
                       fontWeight: 700, 
                       fontFamily: "var(--font-display)", 
                       marginTop: "4px",
-                      color: btResults.metrics.total_return >= 0 ? "#34d399" : "#f87171"
+                      color: "#a78bfa"
                     }}>
-                      {(btResults.metrics.total_return * 100).toFixed(2)}%
+                      {btStrategy === "dark_pool_spike" 
+                        ? `${(btResults.metrics.max_indicator * 100).toFixed(2)}%`
+                        : `$${btResults.metrics.max_indicator.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+                      }
                     </h3>
                   </div>
                   <div className="glass-panel" style={{ padding: "20px" }}>
-                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Max Drawdown</span>
-                    <h3 style={{ fontSize: "1.8rem", fontWeight: 700, color: "#f87171", fontFamily: "var(--font-display)", marginTop: "4px" }}>
-                      {(btResults.metrics.max_drawdown * 100).toFixed(2)}%
+                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Triggered Alerts</span>
+                    <h3 style={{ fontSize: "1.8rem", fontWeight: 700, color: "#10b981", fontFamily: "var(--font-display)", marginTop: "4px" }}>
+                      {btResults.metrics.total_signals}
                     </h3>
                   </div>
                   <div className="glass-panel" style={{ padding: "20px" }}>
-                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Sharpe Ratio</span>
+                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--text-muted))" }}>Active Analysis</span>
                     <h3 style={{ fontSize: "1.8rem", fontWeight: 700, fontFamily: "var(--font-display)", marginTop: "4px" }}>
-                      {btResults.metrics.sharpe_ratio.toFixed(2)}
+                      {btStrategy === "dark_pool_spike" ? "Dark Ratio" : "SMA Cross"}
                     </h3>
                   </div>
                 </div>
 
-                {/* Equity Curve Chart */}
+                {/* Price and Indicator Curves Chart */}
                 <div className="glass-panel" style={{ padding: "24px", minHeight: "380px" }}>
-                  <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "16px" }}>Equity Performance Curve</h4>
-                  <div style={{ width: "100%", height: 300 }}>
+                  <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "16px" }}>Price & Indicator Visualization</h4>
+                  <div style={{ width: "100%", height: 320 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={btResults.equity_history}>
+                      <LineChart data={btResults.series}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
                         <XAxis 
                           dataKey="timestamp" 
@@ -584,54 +577,114 @@ export default function App() {
                           stroke="hsl(var(--text-muted))"
                           fontSize={11}
                         />
-                        <YAxis stroke="hsl(var(--text-muted))" fontSize={11} domain={['auto', 'auto']} />
+                        
+                        {/* Dual Y-Axes Setup */}
+                        <YAxis yAxisId="left" stroke="#3b82f6" fontSize={11} domain={['auto', 'auto']} label={{ value: 'Stock Price ($)', angle: -90, position: 'insideLeft', fill: '#3b82f6', style: {fontSize: 10} }} />
+                        {btStrategy === "dark_pool_spike" ? (
+                          <YAxis yAxisId="right" orientation="right" stroke="#8b5cf6" fontSize={11} domain={[0, 1]} tickFormatter={(val) => `${(val*100).toFixed(0)}%`} label={{ value: 'Dark Pool Ratio', angle: 90, position: 'insideRight', fill: '#8b5cf6', style: {fontSize: 10} }} />
+                        ) : (
+                          <YAxis yAxisId="right" orientation="right" stroke="#10b981" fontSize={11} domain={['auto', 'auto']} label={{ value: 'SMA Value ($)', angle: 90, position: 'insideRight', fill: '#10b981', style: {fontSize: 10} }} />
+                        )}
+                        
                         <Tooltip 
                           contentStyle={{ backgroundColor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
                           labelFormatter={(str) => {
                             try { return str.split("T")[0]; } catch(e) { return str; }
                           }}
-                          formatter={(value: any) => [`$${value.toFixed(2)}`, "Equity"]}
+                          formatter={(value: any, name: any) => {
+                            if (name === "price") return [`$${value.toFixed(2)}`, "Stock Price"];
+                            if (name === "indicator_1") {
+                              return btStrategy === "dark_pool_spike" 
+                                ? [`${(value * 100).toFixed(2)}%`, "Dark Ratio"] 
+                                : [`$${value.toFixed(2)}`, "Fast SMA"];
+                            }
+                            if (name === "indicator_2") {
+                              return btStrategy === "dark_pool_spike" 
+                                ? [`${(value * 100).toFixed(2)}%`, "Threshold"] 
+                                : [`$${value.toFixed(2)}`, "Slow SMA"];
+                            }
+                            return [value, name];
+                          }}
                         />
-                        <Line type="monotone" dataKey="total_value" stroke="#8b5cf6" strokeWidth={2.5} dot={false} />
+                        
+                        <Legend wrapperStyle={{ fontSize: 12, marginTop: 10 }} />
+                        
+                        {/* Lines for Stock Price */}
+                        <Line yAxisId="left" type="monotone" dataKey="price" name="price" stroke="#3b82f6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                        
+                        {/* Lines for Indicators */}
+                        {btStrategy === "dark_pool_spike" ? (
+                          <>
+                            <Line yAxisId="right" type="monotone" dataKey="indicator_1" name="indicator_1" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                            <ReferenceLine yAxisId="right" y={btThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'Threshold', fill: '#ef4444', fontSize: 10 }} />
+                          </>
+                        ) : (
+                          <>
+                            <Line yAxisId="left" type="monotone" dataKey="indicator_1" name="indicator_1" stroke="#10b981" strokeWidth={1.5} dot={false} />
+                            <Line yAxisId="left" type="monotone" dataKey="indicator_2" name="indicator_2" stroke="#f59e0b" strokeWidth={1.5} dot={false} />
+                          </>
+                        )}
+                        
+                        {/* Vertical Signal Lines */}
+                        {btResults.signals.map((sig: any, idx: number) => (
+                          <ReferenceLine 
+                            key={idx}
+                            yAxisId="left"
+                            x={sig.timestamp} 
+                            stroke={sig.type === "BUY" || sig.type === "SPIKE" ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)"} 
+                            strokeDasharray="4 4"
+                          />
+                        ))}
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
-                {/* Trades Executed List */}
+                {/* Signals Table */}
                 <div className="glass-panel" style={{ padding: "24px" }}>
-                  <h4 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "16px" }}>Executed Signals Log</h4>
-                  {btResults.trades.length === 0 ? (
-                    <p style={{ fontSize: "0.85rem", color: "hsl(var(--text-muted))" }}>No trades executed during this time interval.</p>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <h4 style={{ fontSize: "1rem", fontWeight: 700 }}>Triggered Indicator Signals</h4>
+                    <span className="badge badge-darkpool">Total: {btResults.signals.length} alerts</span>
+                  </div>
+                  {btResults.signals.length === 0 ? (
+                    <p style={{ fontSize: "0.85rem", color: "hsl(var(--text-muted))" }}>No indicators crossed the thresholds in this period.</p>
                   ) : (
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid hsl(var(--border-color))", color: "hsl(var(--text-muted))" }}>
                           <th style={{ padding: "10px" }}>Date</th>
-                          <th style={{ padding: "10px" }}>Ticker</th>
-                          <th style={{ padding: "10px" }}>Action</th>
-                          <th style={{ padding: "10px" }}>Quantity</th>
-                          <th style={{ padding: "10px" }}>Price</th>
-                          <th style={{ padding: "10px" }}>Total Cost</th>
-                          <th style={{ padding: "10px" }}>Remaining Cash</th>
+                          <th style={{ padding: "10px" }}>Signal</th>
+                          <th style={{ padding: "10px" }}>Asset Price</th>
+                          <th style={{ padding: "10px" }}>Details</th>
+                          <th style={{ padding: "10px" }}>Broadcaster Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {btResults.trades.map((t: any, idx: number) => (
+                        {btResults.signals.map((sig: any, idx: number) => (
                           <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.02)" }}>
                             <td style={{ padding: "12px 10px" }}>
-                              {t.timestamp.split("T")[0]} {t.timestamp.split("T")[1]?.substring(0, 5)}
+                              {sig.timestamp.split("T")[0]} {sig.timestamp.split("T")[1]?.substring(0, 5)}
                             </td>
-                            <td style={{ padding: "12px 10px", fontWeight: 700 }}>{t.symbol}</td>
                             <td style={{ padding: "12px 10px" }}>
-                              <span className={`badge ${t.action === "BUY" ? "badge-success" : "badge-danger"}`}>
-                                {t.action}
+                              <span className={`badge ${sig.type === "BUY" || sig.type === "SPIKE" ? "badge-success" : "badge-danger"}`}>
+                                {sig.type}
                               </span>
                             </td>
-                            <td style={{ padding: "12px 10px" }}>{t.quantity.toLocaleString()}</td>
-                            <td style={{ padding: "12px 10px" }}>${t.price.toFixed(2)}</td>
-                            <td style={{ padding: "12px 10px" }}>${Math.abs(t.total_cost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            <td style={{ padding: "12px 10px", color: "hsl(var(--text-muted))" }}>${t.remaining_cash.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td style={{ padding: "12px 10px", fontWeight: 600 }}>${sig.price.toFixed(2)}</td>
+                            <td style={{ padding: "12px 10px" }}>{sig.description}</td>
+                            <td style={{ padding: "12px 10px" }}>
+                              <button 
+                                className="badge"
+                                style={{ background: "rgba(167, 139, 250, 0.2)", border: "1px solid #a78bfa", color: "#c084fc", cursor: "pointer", padding: "4px 8px", borderRadius: "4px" }}
+                                onClick={() => {
+                                  setDiscordMsg(`🚨 ALERT [${btResults.symbol}]: ${sig.description}`);
+                                  // Scroll to the Broadcaster panel
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                              >
+                                Send to Broadcaster
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>

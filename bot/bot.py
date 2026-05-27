@@ -5,8 +5,8 @@ import asyncio
 from aiohttp import web
 from dotenv import load_dotenv
 
-# Load env vars from parent directory or local
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../backend/.env"))
+# Load env vars from root directory (global .env)
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../.env"))
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 CHANNEL_ID_ENV = os.getenv("DISCORD_CHANNEL_ID")
@@ -99,7 +99,7 @@ async def status(ctx):
 def main():
     if not TOKEN or TOKEN.startswith("YOUR_"):
         print("DISCORD_BOT_TOKEN not configured in .env. Skipping Discord Bot execution.")
-        print("Please set up a bot token in your backend/.env to run this.")
+        print("Please set up a bot token in your global .env to run this.")
         return
         
     bot.run(TOKEN)

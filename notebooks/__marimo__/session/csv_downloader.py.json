@@ -7,7 +7,7 @@
   "cells": [
     {
       "id": "Hbol",
-      "code_hash": "4552b53cddf20a92d4559b4de7a86c98",
+      "code_hash": "149dcd9d7bf38b63152a082073d76944",
       "outputs": [
         {
           "type": "data",
@@ -20,12 +20,12 @@
     },
     {
       "id": "MJUe",
-      "code_hash": "54c83078baa45bff6ce6251626715b36",
+      "code_hash": "e3a90afbd0ec94cb7be45d29c1ea9b61",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"massivecom-csv-data-downloader-viewer\">\ud83d\udce5 Massive.com CSV Data Downloader &amp; Viewer</h1>\n<span class=\"paragraph\">This notebook allows you to download historical trade-level tick data (including FINRA TRF off-exchange/dark pool trades) directly from Massive.com and save it locally as CSV files in the <code>data/</code> folder. It also provides an interactive viewer to inspect and analyze saved data.</span></span>"
+            "text/plain": ""
           }
         }
       ],
@@ -33,45 +33,38 @@
     },
     {
       "id": "vblA",
-      "code_hash": "0314d4db32360055b5abafd56790706d",
+      "code_hash": "58b7cd3d84736841d0c6adf53dce40dd",
       "outputs": [
         {
-          "type": "error",
-          "ename": "exception",
-          "evalue": "text.__init__() got an unexpected keyword argument 'password'",
-          "traceback": null
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='vblA-0' random-id='66022656-e383-af1f-d60b-5252ceb5f8a6'><marimo-radio data-initial-value='&quot;Download Data&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eSelect Action Mode&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;Download Data&quot;,&quot;View Existing Data&quot;]' data-inline='false' data-disabled='false'></marimo-radio></marimo-ui-element>"
+          }
         }
       ],
-      "console": [
-        {
-          "type": "stream",
-          "name": "stderr",
-          "text": "<span class=\"codehilite\"><div class=\"highlight\"><pre><span></span><span class=\"gt\">Traceback (most recent call last):</span>\n  File <span class=\"nb\">&quot;/var/folders/t6/kvh4s83974131dvzshnx1j340000gn/T/marimo_6750/__marimo__cell_vblA_.py&quot;</span>, line <span class=\"m\">2</span>, in <span class=\"n\">&lt;module&gt;</span>\n<span class=\"w\">    </span><span class=\"n\">api_key_input</span> <span class=\"o\">=</span> <span class=\"n\">mo</span><span class=\"o\">.</span><span class=\"n\">ui</span><span class=\"o\">.</span><span class=\"n\">text</span><span class=\"p\">(</span><span class=\"n\">value</span><span class=\"o\">=</span><span class=\"n\">default_api_key</span><span class=\"p\">,</span> <span class=\"n\">label</span><span class=\"o\">=</span><span class=\"s2\">&quot;Massive.com API Key&quot;</span><span class=\"p\">,</span> <span class=\"n\">password</span><span class=\"o\">=</span><span class=\"kc\">True</span><span class=\"p\">)</span>\n<span class=\"gr\">TypeError</span>: <span class=\"n\">text.__init__() got an unexpected keyword argument &#39;password&#39;</span>\n</pre></div>\n</span>",
-          "mimetype": "application/vnd.marimo+traceback"
-        }
-      ]
+      "console": []
     },
     {
       "id": "bkHC",
-      "code_hash": "6f85121bdbf8da28f2256bb6c2613b8b",
+      "code_hash": "da86e38d7cfbc728016dc9b5346fd7ec",
       "outputs": [
         {
-          "type": "error",
-          "ename": "exception",
-          "evalue": "An ancestor raised an exception (TypeError): ",
-          "traceback": null
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"></span>"
+          }
         }
       ],
       "console": []
     },
     {
       "id": "lEQa",
-      "code_hash": "033570646953c9d11d2fddc1690391f2",
+      "code_hash": "8a3b01bf7a20fe3357757695a11f528d",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"local-file-explorer-viewer\">\ud83d\udcca Local File Explorer &amp; Viewer</h3></span><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">No CSV files found in the <code>data/</code> directory. Download one above first!</span></span></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"local-file-loader\">\ud83d\udcc2 Local File Loader</h3></span><marimo-ui-element object-id='lEQa-0' random-id='3678f2f1-559b-9a66-dc95-9b480983cfc2'><marimo-dropdown data-initial-value='[]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e\ud83d\udcc2 Select Dataset&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;all_tickers.json&quot;]' data-allow-select-none='true' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element></div>"
           }
         }
       ],
@@ -79,25 +72,45 @@
     },
     {
       "id": "PKri",
-      "code_hash": "5073d71cdbb9a841caefdd7a031e87d9",
+      "code_hash": "d1b9e85cbdeee7f6d0655afd5ad51346",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"></span>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"operation-status\">\ud83d\udce1 Operation Status</h3></span><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2705 Loaded local file <code>all_tickers.json</code> containing <strong>100</strong> records.</span></span></div>"
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stderr",
+          "text": "The truth value of a UIElement is always True. You probably want to call `.value` instead.",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "Xref",
+      "code_hash": "c60e6c755801f0867de4d6d8ff68d0cc",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"response-result-viewer\">\ud83d\udccb Response Result Viewer</h3></span><marimo-ui-element object-id='Xref-0' random-id='0eb9d248-f3fd-c284-1574-d3b2edfcd308'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;_marimo_row_id&#92;&quot;:0,&#92;&quot;ticker&#92;&quot;:&#92;&quot;A&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;Agilent Technologies Inc.&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;XNYS&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;CS&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:&#92;&quot;0001090872&#92;&quot;,&#92;&quot;composite_figi&#92;&quot;:&#92;&quot;BBG000C2V3D6&#92;&quot;,&#92;&quot;share_class_figi&#92;&quot;:&#92;&quot;BBG001SCTQY4&#92;&quot;,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081305427Z&#92;&quot;},{&#92;&quot;_marimo_row_id&#92;&quot;:1,&#92;&quot;ticker&#92;&quot;:&#92;&quot;AA&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;Alcoa Corporation&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;XNYS&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;CS&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:&#92;&quot;0001675149&#92;&quot;,&#92;&quot;composite_figi&#92;&quot;:&#92;&quot;BBG00B3T3HD3&#92;&quot;,&#92;&quot;share_class_figi&#92;&quot;:&#92;&quot;BBG00B3T3HF1&#92;&quot;,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081306499Z&#92;&quot;},{&#92;&quot;_marimo_row_id&#92;&quot;:2,&#92;&quot;ticker&#92;&quot;:&#92;&quot;AAA&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;Alternative Access First Priority CLO Bond ETF&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;ARCX&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;ETF&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:&#92;&quot;0001776878&#92;&quot;,&#92;&quot;composite_figi&#92;&quot;:&#92;&quot;BBG01B0JRCS6&#92;&quot;,&#92;&quot;share_class_figi&#92;&quot;:&#92;&quot;BBG01B0JRCT5&#92;&quot;,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081307201Z&#92;&quot;},{&#92;&quot;_marimo_row_id&#92;&quot;:3,&#92;&quot;ticker&#92;&quot;:&#92;&quot;AAAA&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;Amplius Aggressive Asset Allocation ETF&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;BATS&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;ETF&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:NaN,&#92;&quot;composite_figi&#92;&quot;:&#92;&quot;BBG01W275XX6&#92;&quot;,&#92;&quot;share_class_figi&#92;&quot;:&#92;&quot;BBG01W275ZB5&#92;&quot;,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081307431Z&#92;&quot;},{&#92;&quot;_marimo_row_id&#92;&quot;:4,&#92;&quot;ticker&#92;&quot;:&#92;&quot;AAAC&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;Columbia AAA CLO ETF&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;ARCX&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;ETF&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:&#92;&quot;0001551950&#92;&quot;,&#92;&quot;composite_figi&#92;&quot;:&#92;&quot;BBG01YZNRVY0&#92;&quot;,&#92;&quot;share_class_figi&#92;&quot;:&#92;&quot;BBG01YZNRWV1&#92;&quot;,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081307682Z&#92;&quot;},{&#92;&quot;_marimo_row_id&#92;&quot;:5,&#92;&quot;ticker&#92;&quot;:&#92;&quot;AAAU&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;Goldman Sachs Physical Gold ETF Shares&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;BATS&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;ETF&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:&#92;&quot;0001708646&#92;&quot;,&#92;&quot;composite_figi&#92;&quot;:&#92;&quot;BBG00LPXX872&#92;&quot;,&#92;&quot;share_class_figi&#92;&quot;:&#92;&quot;BBG00LPXX8Z1&#92;&quot;,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081307932Z&#92;&quot;},{&#92;&quot;_marimo_row_id&#92;&quot;:6,&#92;&quot;ticker&#92;&quot;:&#92;&quot;AACB&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;Artius II Acquisition Inc. Class A Ordinary Shares&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;XNAS&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;CS&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:&#92;&quot;0002034334&#92;&quot;,&#92;&quot;composite_figi&#92;&quot;:NaN,&#92;&quot;share_class_figi&#92;&quot;:NaN,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081308162Z&#92;&quot;},{&#92;&quot;_marimo_row_id&#92;&quot;:7,&#92;&quot;ticker&#92;&quot;:&#92;&quot;AACBR&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;Artius II Acquisition Inc. Rights&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;XNAS&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;RIGHT&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:&#92;&quot;0002034334&#92;&quot;,&#92;&quot;composite_figi&#92;&quot;:NaN,&#92;&quot;share_class_figi&#92;&quot;:NaN,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081308383Z&#92;&quot;},{&#92;&quot;_marimo_row_id&#92;&quot;:8,&#92;&quot;ticker&#92;&quot;:&#92;&quot;AACBU&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;Artius II Acquisition Inc. Units&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;XNAS&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;UNIT&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:&#92;&quot;0002034334&#92;&quot;,&#92;&quot;composite_figi&#92;&quot;:NaN,&#92;&quot;share_class_figi&#92;&quot;:NaN,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081308713Z&#92;&quot;},{&#92;&quot;_marimo_row_id&#92;&quot;:9,&#92;&quot;ticker&#92;&quot;:&#92;&quot;AACG&#92;&quot;,&#92;&quot;name&#92;&quot;:&#92;&quot;ATA Creativity Global American Depositary Shares&#92;&quot;,&#92;&quot;market&#92;&quot;:&#92;&quot;stocks&#92;&quot;,&#92;&quot;locale&#92;&quot;:&#92;&quot;us&#92;&quot;,&#92;&quot;primary_exchange&#92;&quot;:&#92;&quot;XNAS&#92;&quot;,&#92;&quot;type&#92;&quot;:&#92;&quot;ADRC&#92;&quot;,&#92;&quot;active&#92;&quot;:true,&#92;&quot;currency_name&#92;&quot;:&#92;&quot;usd&#92;&quot;,&#92;&quot;cik&#92;&quot;:&#92;&quot;0001420529&#92;&quot;,&#92;&quot;composite_figi&#92;&quot;:&#92;&quot;BBG000V2S3P6&#92;&quot;,&#92;&quot;share_class_figi&#92;&quot;:&#92;&quot;BBG001T125S9&#92;&quot;,&#92;&quot;last_updated_utc&#92;&quot;:&#92;&quot;2026-05-25T06:08:30.081308954Z&#92;&quot;}]&quot;' data-total-rows='100' data-size-bytes='32235' data-total-columns='12' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='true' data-page-size='10' data-field-types='[[&quot;ticker&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;name&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;market&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;locale&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;primary_exchange&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;type&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;active&quot;,[&quot;boolean&quot;,&quot;bool&quot;]],[&quot;currency_name&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;cik&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;composite_figi&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;share_class_figi&quot;,[&quot;string&quot;,&quot;str&quot;]],[&quot;last_updated_utc&quot;,[&quot;string&quot;,&quot;str&quot;]]]' data-selection='&quot;multi&quot;' data-show-filters='true' data-show-download='true' data-show-column-summaries='true' data-show-data-types='true' data-show-page-size-selector='true' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-has-stable-row-id='true' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element></div>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "Xref",
-      "code_hash": "a74f05e2438fc53e9eccd5a582b73d89",
+      "id": "RfOt",
+      "code_hash": "6ba91c1d438b9bcf4d1b73ce34df82de",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"></span>"
+            "text/html": "<pre class='text-xs'>Index([&#x27;ticker&#x27;, &#x27;name&#x27;, &#x27;market&#x27;, &#x27;locale&#x27;, &#x27;primary_exchange&#x27;, &#x27;type&#x27;,\n       &#x27;active&#x27;, &#x27;currency_name&#x27;, &#x27;cik&#x27;, &#x27;composite_figi&#x27;, &#x27;share_class_figi&#x27;,\n       &#x27;last_updated_utc&#x27;],\n      dtype=&#x27;str&#x27;)</pre>"
           }
         }
       ],

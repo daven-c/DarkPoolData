@@ -1,22 +1,21 @@
 from abc import ABC, abstractmethod
 import pandas as pd
-from typing import Dict, Any
+from typing import Dict, Any, Tuple, List
 
 class Strategy(ABC):
     def __init__(self, parameters: Dict[str, Any] = None):
         """
-        Base Strategy Class.
+        Base Strategy Class for indicator calculations.
         :param parameters: Dict of strategy parameters (e.g. thresholds, lookbacks).
         """
         self.parameters = parameters or {}
 
     @abstractmethod
-    def on_data(self, current_time: pd.Timestamp, data: Dict[str, Any], portfolio) -> None:
+    def calculate(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
         """
-        This method is invoked chronologically at each timestamp in the backtest.
+        Calculates indicators and signal events on the input historical dataframe.
         
-        :param current_time: The current timestamp.
-        :param data: Dictionary mapping tickers to their current bar/trade/darkpool data.
-        :param portfolio: The Portfolio object which allows executing buy/sell orders.
+        :param df: DataFrame containing price history and other raw details.
+        :return: A tuple of (df_with_indicators, signals_list)
         """
         pass

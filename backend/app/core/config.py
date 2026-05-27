@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     
     # Discord configuration
     DISCORD_BOT_TOKEN: str = ""
-    DISCORD_CHANNEL_ID: Optional[int] = None
+    DISCORD_CHANNEL_ID: Optional[str] = None
     
     # Application Config
     PORTFOLIO_INITIAL_CASH: float = 100000.0
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
 
     class Config:
-        env_file = ".env"
+        env_file = (".env", "backend/.env", "../.env")
         extra = "ignore"
 
 settings = Settings()

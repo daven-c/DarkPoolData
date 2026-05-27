@@ -4,7 +4,6 @@ from typing import List, Dict, Any, Optional
 from backend.app.core.config import settings
 from backtester import (
     BacktestEngine,
-    Portfolio,
     APIDataProvider,
     MockDataProvider,
     DarkPoolSpikeStrategy,
@@ -20,7 +19,7 @@ class BacktestRequest(BaseModel):
     end_date: str = Field(..., description="End date (YYYY-MM-DD)")
     strategy_name: str = Field("dark_pool_spike", description="Either 'dark_pool_spike' or 'sma_cross'")
     strategy_params: Dict[str, Any] = Field(default_factory=dict, description="Parameters for the strategy")
-    initial_cash: float = Field(100000.0, description="Starting cash balance")
+    initial_cash: float = Field(100000.0, description="Starting cash balance (ignored)")
 
 @router.post("/run")
 def run_backtest(req: BacktestRequest = Body(...)):
@@ -33,7 +32,6 @@ def run_backtest(req: BacktestRequest = Body(...)):
         raise HTTPException(status_code=400, detail=f"Unknown strategy name: {req.strategy_name}")
 
     # Set up data provider.
-    # Fall back to MockDataProvider if the API key is not set or is empty.
     api_key_set = bool(settings.MASSIVE_API_KEY and not settings.MASSIVE_API_KEY.startswith("YOUR_"))
     
     if api_key_set:
@@ -53,36 +51,23 @@ def run_backtest(req: BacktestRequest = Body(...)):
         )
         data_source_msg = "Mock Data (API key not configured)"
 
-    portfolio = Portfolio(initial_cash=req.initial_cash)
-    engine = BacktestEngine(data_provider=data_provider, strategy=strategy, portfolio=portfolio)
+    symbol = req.symbols[0] if req.symbols else "AAPL"
+    engine = BacktestEngine(data_provider=data_provider, strategy=strategy, symbol=symbol)
 
     try:
         results = engine.run()
-        
-        # Serialize timestamps for response compatibility
-        trades_serializable = []
-        for t in portfolio.trades:
-            t_copy = t.copy()
-            # Convert pd.Timestamp to ISO format string
-            t_copy["timestamp"] = t["timestamp"].isoformat()
-            trades_serializable.append(t_copy)
-            
-        equity_serializable = []
-        for eq in portfolio.equity_history:
-            eq_copy = eq.copy()
-            eq_copy["timestamp"] = eq["timestamp"].isoformat()
-            equity_serializable.append(eq_copy)
-
         return {
             "success": True,
             "data_source": data_source_msg,
-            "metrics": results,
-            "trades": trades_serializable,
-            "equity_history": equity_serializable
+            "symbol": symbol,
+            "metrics": results["metrics"],
+            "series": results["series"],
+            "signals": results["signals"]
         }
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail=f"Backtest execution failed: {str(e)}\n{traceback.format_exc()}"
+            detail=f"Indicator calculation failed: {str(e)}\n{traceback.format_exc()}"
         )
+
