@@ -1,35 +1,124 @@
+import os
+import sys
+import threading
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+
+# Make `python3 backend/app/main.py` work from the repo root by adding the
+# project root to sys.path before the `backend.*` imports resolve.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from backend.app.api import backtest, darkpool, dashboard
 from backend.app.core.config import settings
-from backend.app.api import darkpool, backtest
-import uvicorn
+from backend.app.services.aggregator import DashboardAggregator
+from backend.app.services.dashboard_store import DashboardStore
+from backend.app.services.massive import MassiveService
+from backend.app.services.stream import DashboardStreamer
+
+
+def _prior_trading_day(today: datetime) -> str:
+    d = today - timedelta(days=1)
+    while d.weekday() >= 5:  # Sat=5, Sun=6
+        d -= timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
+
+
+def _seed_prior_totals(
+    massive: MassiveService,
+    store: DashboardStore,
+    prior_totals: dict,
+    universe: list,
+    date_str: str,
+) -> None:
+    cached = store.get_totals(date_str, universe)
+    missing = [t for t in universe if t not in cached]
+    prior_totals.update(cached)
+    if not missing:
+        print(f"[dashboard] prior-day totals served from cache for {date_str}", flush=True)
+        return
+    print(f"[dashboard] seeding {len(missing)} prior-day totals for {date_str}...", flush=True)
+    fresh = massive.get_prior_day_dark_totals(missing, date_str)
+    if fresh:
+        store.upsert_totals(date_str, fresh)
+        prior_totals.update(fresh)
+    print(f"[dashboard] prior-day seed complete ({len(prior_totals)} tickers)", flush=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    massive = MassiveService()
+    store = DashboardStore()
+    prior_date = _prior_trading_day(datetime.now())
+
+    try:
+        universe = massive.get_top_volume_tickers(prior_date, n=settings.DASHBOARD_UNIVERSE_SIZE)
+        print(f"[dashboard] universe ready: {len(universe)} tickers for prior_date={prior_date}", flush=True)
+    except Exception as e:
+        print(f"[dashboard] universe init failed, falling back to empty: {e}", flush=True)
+        universe = []
+
+    aggregator = DashboardAggregator(universe)
+    prior_totals: dict = {}
+
+    app.state.aggregator = aggregator
+    app.state.prior_totals = prior_totals
+    app.state.prior_date = prior_date
+
+    streamer = None
+    if universe and settings.MASSIVE_API_KEY:
+        streamer = DashboardStreamer(settings.MASSIVE_API_KEY, universe, aggregator)
+        streamer.start()
+        app.state.streamer = streamer
+
+    if settings.DASHBOARD_SEED_PRIOR_DAY and universe:
+        threading.Thread(
+            target=_seed_prior_totals,
+            args=(massive, store, prior_totals, universe, prior_date),
+            name="dashboard-seed",
+            daemon=True,
+        ).start()
+
+    try:
+        yield
+    finally:
+        if streamer is not None:
+            streamer.stop()
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="1.0.0",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
 )
 
-# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For local development, allow all origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register routers
 app.include_router(darkpool.router, prefix=f"{settings.API_V1_STR}/darkpool", tags=["DarkPool"])
 app.include_router(backtest.router, prefix=f"{settings.API_V1_STR}/backtest", tags=["Backtester"])
+app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["Dashboard"])
+
 
 @app.get("/")
 def read_root():
     return {
         "status": "online",
         "service": settings.PROJECT_NAME,
-        "docs_url": "/docs"
+        "docs_url": "/docs",
     }
+
 
 if __name__ == "__main__":
     uvicorn.run("backend.app.main:app", host=settings.HOST, port=settings.PORT, reload=True)

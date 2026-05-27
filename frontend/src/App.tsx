@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { 
-  TrendingUp, 
-  Activity, 
-  BarChart3, 
-  Play, 
+import {
+  TrendingUp,
+  Activity,
+  BarChart3,
+  Play,
   AlertTriangle,
   Send,
-  MessageSquare
+  MessageSquare,
+  LayoutGrid
 } from "lucide-react";
+import TickerDashboard from "./TickerDashboard";
 import {
   ResponsiveContainer,
   LineChart,
@@ -26,7 +28,7 @@ import {
 const API_BASE = "http://localhost:8000/api/v1";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"scanner" | "backtester">("backtester");
+  const [activeTab, setActiveTab] = useState<"scanner" | "backtester" | "dashboard">("dashboard");
   const [backendStatus, setBackendStatus] = useState<"connecting" | "online" | "offline">("connecting");
 
   // Scanner state
@@ -169,6 +171,9 @@ export default function App() {
 
         {/* Navigation Tabs */}
         <nav style={{ display: "flex", gap: "8px" }}>
+          <button className={`tab-btn ${activeTab === "dashboard" ? "active" : ""}`} onClick={() => setActiveTab("dashboard")}>
+            <LayoutGrid size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} /> Ticker Dashboard
+          </button>
           <button className={`tab-btn ${activeTab === "backtester" ? "active" : ""}`} onClick={() => setActiveTab("backtester")}>
             <BarChart3 size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} /> Indicator Visualizer
           </button>
@@ -195,6 +200,9 @@ export default function App() {
 
       {/* Main Content Area */}
       <main style={{ flex: 1, padding: "0 24px 32px 24px", maxWidth: "1400px", width: "100%", margin: "0 auto" }}>
+
+        {/* VIEW 1: TICKER DASHBOARD */}
+        {activeTab === "dashboard" && <TickerDashboard />}
 
         {/* VIEW 2: DARK POOL SCANNER */}
         {activeTab === "scanner" && (

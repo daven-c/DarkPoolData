@@ -1,8 +1,14 @@
 # DarkPoolData Platform
 
-An institutional-grade platform to ingest, explore, backtest, and alert on off-exchange (dark pool/TRF) trade data using the **Massive.com** (formerly Polygon.io) market data APIs. 
+An institutional-grade platform to ingest, explore, backtest, and alert on off-exchange (dark pool/TRF) trade data using the **Massive.com** (formerly Polygon.io) market data APIs.
 
-The platform integrates a custom Python simulation engine, a FastAPI backend router, a React + Vite dashboard web app, a Discord gateway announcer, and an interactive Marimo exploratory notebook.
+The platform integrates:
+- A **livestreaming Ticker Dashboard** powered by the Massive WebSocket feed (TRF trades → per-symbol running totals, AT BID / AT ASK split, block detection).
+- A FastAPI backend router with SSE streaming and a SQLite cache for prior-day totals.
+- A React + Vite dashboard web app (Recharts + glassmorphic dark mode).
+- A custom Python backtesting engine for strategy simulation.
+- A Discord gateway announcer for institutional-flow alerts.
+- Interactive Marimo notebooks for ad-hoc exploration.
 
 ---
 
@@ -11,23 +17,27 @@ The platform integrates a custom Python simulation engine, a FastAPI backend rou
 ```
 ├── backend/
 │   ├── app/
-│   │   ├── api/             # API Router controllers
-│   │   │   ├── darkpool.py   # TRF trade details and aggregates
-│   │   │   ├── backtest.py   # Runs historical backtests
-│   │   │   └── portfolio.py  # Active holdings and transactions ledger
+│   │   ├── api/                 # API Router controllers
+│   │   │   ├── darkpool.py       # TRF trade details and aggregates (single-symbol scanner)
+│   │   │   ├── backtest.py       # Runs historical backtests
+│   │   │   └── dashboard.py      # Livestream dashboard: snapshot + SSE stream + universe
 │   │   ├── core/
-│   │   │   └── config.py     # Configuration variables loader
+│   │   │   └── config.py         # Configuration variables loader
 │   │   ├── services/
-│   │   │   ├── massive.py    # Massive.com REST API client interface
-│   │   │   └── discord.py    # Broadcaster to bot receiver webhook
-│   │   └── main.py          # FastAPI application server entrypoint
-│   └── .env                  # Local API keys and credentials
+│   │   │   ├── massive.py        # Massive REST client (trades, aggs, grouped daily)
+│   │   │   ├── aggregator.py     # In-memory running totals + tick-test bid/ask classifier
+│   │   │   ├── stream.py         # Massive WebSocket subscriber (T.<ticker>) → aggregator
+│   │   │   ├── dashboard_store.py # SQLite cache for prior-day totals (% change column)
+│   │   │   └── discord.py        # Broadcaster to bot receiver webhook
+│   │   └── main.py              # FastAPI app + lifespan that boots universe/WS/cache
+│   └── .env                      # Local API keys and credentials
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx          # Single-Page Dashboard (Recharts + router tabs)
-│   │   ├── index.css        # Premium dark mode glassmorphic stylesheet
+│   │   ├── App.tsx               # Tab shell + Backtest Engine + Dark Pool Scanner views
+│   │   ├── TickerDashboard.tsx   # Livestreaming dashboard (SSE → sortable paginated table)
+│   │   ├── index.css             # Premium dark mode glassmorphic stylesheet
 │   │   └── main.tsx
-│   └── package.json          # Node dependencies (React 19, recharts, lucide-react)
+│   └── package.json              # Node dependencies (React 19, recharts, lucide-react)
 ├── backtester/
 │   ├── engine.py            # Chronological tick-by-tick simulation loop
 │   ├── portfolio.py         # Position management, trade logs, and metrics math
@@ -70,7 +80,14 @@ MASSIVE_API_KEY=YOUR_MASSIVE_API_KEY_HERE
 # Discord Configuration (Optional)
 DISCORD_BOT_TOKEN=YOUR_DISCORD_BOT_TOKEN_HERE
 DISCORD_CHANNEL_ID=YOUR_DISCORD_CHANNEL_ID_HERE
+
+# Dashboard (Optional - defaults shown)
+DASHBOARD_UNIVERSE_SIZE=100     # Top-N tickers by prior-day dollar volume
+DASHBOARD_WS_FEED=delayed       # "realtime" or "delayed" (your plan tier)
+DASHBOARD_SEED_PRIOR_DAY=True   # Backfill % change column on first boot
 ```
+
+> **Note on data tiers**: the Massive WebSocket has separate URLs for real-time and delayed feeds. If your plan only includes delayed data, keep `DASHBOARD_WS_FEED=delayed` — the backend will otherwise authenticate but receive zero ticks.
 
 ---
 
@@ -78,25 +95,57 @@ DISCORD_CHANNEL_ID=YOUR_DISCORD_CHANNEL_ID_HERE
 
 Activate the virtual environment (`source .venv/bin/activate`) before starting any Python processes.
 
+### Quickstart (Backend + Frontend)
+
+```bash
+# Terminal 1 — backend
+source .venv/bin/activate
+python3 backend/app/main.py
+
+# Terminal 2 — frontend
+npm install --prefix frontend     # one-time
+npm run dev --prefix frontend
+```
+
+Then open **http://localhost:5173**. The **Ticker Dashboard** tab is the default view.
+
+---
+
 ### 1. Start the FastAPI Backend Server
-The backend handles routing, aggregates TRF metrics from Massive.com, runs simulations, and triggers alerts.
+The backend handles routing, aggregates TRF metrics from Massive, runs the WebSocket livestream, executes simulations, and triggers alerts.
 
 ```bash
 python3 backend/app/main.py
 ```
-* The API will boot on `http://localhost:8000`.
-* Open `http://localhost:8000/docs` to access the interactive Swagger documentation.
+* The API boots on `http://localhost:8000`.
+* On startup, the lifespan hook:
+  1. Calls `get_grouped_daily_aggs` for the prior trading day and picks the top-N tickers by dollar volume (configurable, default 100).
+  2. Opens a Massive WebSocket connection and subscribes to `T.<ticker>` for that universe.
+  3. Kicks off a background thread to backfill prior-day TRF totals into `data/dashboard_cache.db` (powers the **DAILY AMOUNT CHANGE** column).
+* Open `http://localhost:8000/docs` for the interactive Swagger documentation.
+
+Key endpoints:
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/dashboard/snapshot` | Paginated, sortable current snapshot of the dashboard universe |
+| `GET /api/v1/dashboard/stream` | Server-Sent Events feed of per-trade aggregator deltas |
+| `GET /api/v1/dashboard/universe` | Active top-N ticker list |
+| `GET /api/v1/darkpool/summary` | Single-symbol TRF aggregates for a given date |
+| `GET /api/v1/darkpool/trades` | Raw TRF tick log for a single symbol/date |
+| `POST /api/v1/backtest/run` | Run a strategy over historical data |
 
 ### 2. Launch the React Web Application
 Install the frontend node modules and launch the Vite dev server:
 
 ```bash
-# Navigate to frontend folder or execute:
 npm install --prefix frontend
 npm run dev --prefix frontend
 ```
-* The glassmorphic dashboard will run at `http://localhost:5173`.
-* Switch between the **Backtest Engine** (run strategy simulations, view equity growth curves, and push manual alerts to Discord) and **Dark Pool Scanner** (pie chart volume distribution and detailed trade logs) tabs.
+* The glassmorphic dashboard runs at `http://localhost:5173`.
+* Three tabs:
+  * **Ticker Dashboard** (default) — livestreaming TRF table for the top-N universe with sortable columns, ticker logos, per-row CSV export. Subscribes to `/dashboard/stream` via `EventSource` for live deltas.
+  * **Indicator Visualizer** — configure and run a backtesting strategy, view equity curves, push manual alerts to Discord.
+  * **Dark Pool Scanner** — single-symbol deep dive: pie chart of lit vs. off-exchange volume, institutional block trade log.
 
 ### 3. Start the Discord Alert Bot (Optional)
 Starts the bot client and activates its webhook listener:
@@ -120,6 +169,21 @@ marimo edit notebooks/csv_downloader.py
 ```
 
 ---
+
+## 📡 Ticker Dashboard internals
+
+The dashboard's columns and how they are computed:
+
+| Column | Source |
+|---|---|
+| **TOTAL AMOUNT** | Σ (price × size) of all TRF trades today (exchange ID 4) |
+| **DAILY AMOUNT CHANGE** | `(today − prior_day) / prior_day × 100` — `prior_day` from SQLite cache at `data/dashboard_cache.db` |
+| **AT ASK / AT BID** | Approximated via the Lee-Ready tick test: uptick → at_ask, downtick → at_bid, equal → retain prior side. *No NBBO quote join (v1).* |
+| **NET VALUE** | `AT ASK − AT BID` |
+| **DP TRADES** | Count of TRF trades |
+| **BLOCK TRADES** | Count of TRF trades with `size ≥ 10,000` |
+
+The aggregator runs in-memory inside the FastAPI process. The Massive WebSocket subscriber updates it on every tick and fans out deltas to any open SSE subscribers. State resets on backend restart (today's totals are rebuilt from the live stream as it accumulates).
 
 ## 📈 Backtesting Custom Strategies
 
