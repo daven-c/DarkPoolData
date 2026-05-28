@@ -1,4 +1,4 @@
-from polygon import RESTClient
+from massive import RESTClient
 from backend.app.core.config import settings
 from typing import List, Dict, Any, Optional
 import pandas as pd
@@ -126,6 +126,57 @@ class MassiveService:
             "avg_dark_price": avg_dark_price,
             "large_block_trades": block_trades[:20]  # Return top 20 blocks
         }
+
+    def get_top_volume_tickers(self, date_str: str, n: int = 100) -> List[str]:
+        """
+        Returns the top-N tickers ranked by dollar-volume (close * volume) for the given date,
+        using Massive's grouped daily aggs (single REST call for all US stocks).
+        """
+        client = self._get_client()
+        try:
+            results = client.get_grouped_daily_aggs(date=date_str, adjusted=True)
+        except Exception as e:
+            print(f"Error fetching grouped daily aggs for {date_str}: {e}")
+            raise e
+
+        ranked = []
+        for r in results:
+            ticker = getattr(r, "ticker", None)
+            close = getattr(r, "close", None)
+            volume = getattr(r, "volume", None)
+            if not ticker or close is None or volume is None:
+                continue
+            if "." in ticker or "/" in ticker:
+                continue  # skip preferred shares, warrants, etc.
+            ranked.append((ticker, close * volume))
+
+        ranked.sort(key=lambda x: x[1], reverse=True)
+        return [t for t, _ in ranked[:n]]
+
+    def get_prior_day_dark_totals(self, tickers: List[str], date_str: str) -> Dict[str, float]:
+        """
+        For each ticker, computes total dollar amount of TRF (off-exchange) trades on date_str.
+        Used to seed DAILY AMOUNT CHANGE. Hits list_trades per ticker so this is the slow path
+        and should only be run once at startup.
+        """
+        client = self._get_client()
+        out: Dict[str, float] = {}
+        for ticker in tickers:
+            total = 0.0
+            try:
+                for t in client.list_trades(
+                    ticker=ticker,
+                    timestamp_gte=f"{date_str}T00:00:00Z",
+                    timestamp_lte=f"{date_str}T23:59:59Z",
+                    limit=50000,
+                ):
+                    if getattr(t, "exchange", None) == 4:
+                        total += float(t.price) * float(t.size)
+            except Exception as e:
+                print(f"Error fetching prior-day TRF totals for {ticker}: {e}")
+                continue
+            out[ticker] = total
+        return out
 
     def get_daily_aggs(self, ticker: str, from_date: str, to_date: str) -> List[Dict[str, Any]]:
         """

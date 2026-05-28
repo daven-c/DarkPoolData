@@ -18,6 +18,7 @@ DarkPoolData is a platform for ingesting, exploring, backtesting, and alerting o
 - **Imports are absolute from the repo root**, e.g. `from backend.app.core.config import settings`, `from backtester import Strategy`. Match this when adding new modules.
 - **Secrets live only in `.env`** (gitignored). Never hardcode the Massive API key or Discord token. Add new config keys to `Settings` in `backend/app/core/config.py` so they have defaults and type-checking.
 - **CSV/parquet/sqlite files are gitignored** — they are local data artifacts, not source. Don't commit them.
+- **Python SDK is `massive`** (renamed from `polygon-api-client` on 2025-10-30 when Polygon.io rebranded). Import as `from massive import RESTClient, WebSocketClient` and `from massive.websocket.models import Feed, Market`. The upstream rename was a drop-in: methods, models, enums, and `T.<ticker>` subscription strings are unchanged.
 
 ## Adding a new backtest strategy
 

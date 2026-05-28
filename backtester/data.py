@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import pandas as pd
 from typing import Dict, Any, List, Generator, Optional
-from polygon import RESTClient  # Massive client library uses 'polygon' namespaces as fallback or direct import
+from massive import RESTClient
 
 class DataProvider(ABC):
     @abstractmethod
