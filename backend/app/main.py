@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import threading
@@ -15,9 +16,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api import backtest, darkpool, dashboard
+from backend.app.api import alerts as alerts_api
 from backend.app.core.config import settings
 from backend.app.rules import RuleEngine, default_rules
+from backend.app.services.alerts import AlertDispatcher, AlertStore, forward_return_stamper
 from backend.app.services.dashboard_store import DashboardStore
+from backend.app.services.discord import discord_notifier
 from backend.app.services.massive import MassiveService
 from backend.app.services.stream import DashboardStreamer
 
@@ -66,7 +70,9 @@ async def lifespan(app: FastAPI):
         print(f"[dashboard] universe init failed, falling back to empty: {e}", flush=True)
         universe = []
 
-    # Central RuleEngine — the single source of truth for state + signals
+    # -----------------------------------------------------------------------
+    # Central RuleEngine — single source of truth for state + signals
+    # -----------------------------------------------------------------------
     engine = RuleEngine(
         rules=default_rules(),
         universe=universe,
@@ -76,12 +82,42 @@ async def lifespan(app: FastAPI):
     app.state.engine = engine
     app.state.prior_date = prior_date
 
+    # -----------------------------------------------------------------------
+    # Alert pipeline — SSE + Discord + SQLite + forward-return stamper
+    # -----------------------------------------------------------------------
+    alert_store = AlertStore()
+    dispatcher = AlertDispatcher(
+        store=alert_store,
+        discord=discord_notifier,
+        sse_queue_max=settings.ALERTS_SSE_QUEUE_MAX,
+        discord_enabled=settings.ALERTS_DISCORD_ENABLED,
+    )
+    await dispatcher.start()
+    app.state.alert_store = alert_store
+    app.state.alert_dispatcher = dispatcher
+
+    stamper_task = asyncio.create_task(
+        forward_return_stamper(alert_store, massive, settings.ALERTS_FORWARD_HORIZONS_MIN),
+        name="forward-return-stamper",
+    )
+
+    # -----------------------------------------------------------------------
+    # WebSocket streamer — feeds engine; fired signals → dispatcher
+    # -----------------------------------------------------------------------
     streamer = None
     if universe and settings.MASSIVE_API_KEY:
-        streamer = DashboardStreamer(settings.MASSIVE_API_KEY, universe, engine)
+        streamer = DashboardStreamer(
+            settings.MASSIVE_API_KEY,
+            universe,
+            engine,
+            alert_callback=dispatcher.enqueue,
+        )
         streamer.start()
         app.state.streamer = streamer
 
+    # -----------------------------------------------------------------------
+    # Prior-day totals (background thread — slow REST call)
+    # -----------------------------------------------------------------------
     if settings.DASHBOARD_SEED_PRIOR_DAY and universe:
         threading.Thread(
             target=_seed_prior_totals,
@@ -93,6 +129,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        stamper_task.cancel()
         if streamer is not None:
             streamer.stop()
 
@@ -115,6 +152,7 @@ app.add_middleware(
 app.include_router(darkpool.router, prefix=f"{settings.API_V1_STR}/darkpool", tags=["DarkPool"])
 app.include_router(backtest.router, prefix=f"{settings.API_V1_STR}/backtest", tags=["Backtester"])
 app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["Dashboard"])
+app.include_router(alerts_api.router, prefix=f"{settings.API_V1_STR}/alerts", tags=["Alerts"])
 
 
 @app.get("/")
