@@ -36,7 +36,45 @@ See the README for full commands. Quick reference:
 
 If `MASSIVE_API_KEY` is unset, the backtest engine falls back to `MockDataProvider`, so backend/backtest endpoints work without credentials.
 
+## API endpoint reference (`/api/v1/…`)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/dashboard/snapshot` | Paginated, sortable current state of the WS universe (reads `engine.snapshot()`) |
+| `GET` | `/dashboard/stream` | SSE feed of per-trade `TickerState` deltas (subscribes to `engine.subscribe()`) |
+| `GET` | `/dashboard/universe` | Active top-N ticker list |
+| `GET` | `/darkpool/summary` | Single-symbol TRF aggregates for a date |
+| `GET` | `/darkpool/trades` | Raw TRF tick log for a symbol/date |
+| `POST` | `/backtest/run` | Legacy indicator-strategy backtest (Recharts equity curve) |
+| `POST` | `/backtest/rules` | Rule-based backtest: forward-return stats + Portfolio P&L + equity curve |
+| `GET` | `/alerts/stream` | SSE fan-out of live `Signal` events |
+| `GET` | `/alerts/recent` | Most-recent N alerts (default 100) |
+| `GET` | `/alerts/history` | Historical alerts with stamped `+5m/+30m/+1d` returns; filter by `symbol`, `rule_name`, `limit` |
+| `GET` | `/rules` | List all admin-defined rules |
+| `POST` | `/rules` | Create a rule + hot-reload engine |
+| `PATCH` | `/rules/{id}` | Partial-update a rule + hot-reload engine |
+| `DELETE` | `/rules/{id}` | Delete a rule + hot-reload engine |
+| `GET` | `/rules/metrics` | Metric catalog for the Strategy Lab builder UI |
+| `POST` | `/rules/preview` | Evaluate a draft rule against current `TickerState`s → matched symbols |
+
+## Rule engine (`backend/app/rules/`)
+
+The core abstraction for the redesign. Key files:
+
+| File | Contents |
+|------|---------|
+| `events.py` | `MarketEvent` (trade event DTO), `TickerState` (per-symbol running totals, Lee-Ready tick test, session OHLC, recent-trades deque) |
+| `metrics.py` | 12-metric catalog (`trade_notional`, `side`, `is_block`, `net_flow_notional`, `block_count`, `price_move_pct(w)`, etc.); `METRICS` registry + `catalog()` |
+| `conditions.py` | `Leaf` (metric ▸ cmp ▸ value ▸ window_s) + `Composite` (AND/OR/NOT); `compile_condition()`, `evaluate()`, `validate_logic()` |
+| `rule.py` | `Rule` (id, name, enabled, severity, side_label, kind, cooldown_s, logic) + `Signal`; JSON round-trip |
+| `engine.py` | `RuleEngine`: per-ticker `TickerState` + active rules; `process(event)` with per-(rule,symbol) cooldown; `set_rules()` (hot-reload); `snapshot()` (dashboard feed); `preview()` (match current state without mutating); SSE `subscribe()` async generator |
+| `builtins.py` | 5 seed rules: Whale Buy, Block Trade, Bullish Sweep, Price Breakout, Bearish Net Flow |
+| `tests/` | 11 pytest cases — run with `python3 -m pytest backend/app/rules/tests` |
+
+**Managed signals principle**: one `RuleEngine` instance per server, admin-defined rules only. All subscribers see the same signal stream. Per-user custom rules in the live engine are out of scope (infeasible at scale).
+
 ## Notes for edits
 
 - The shared package layout is load-bearing — moving `backtester/` or renaming its public symbols breaks all four consumers at once. Update the re-exports in `backtester/__init__.py` and the README architecture diagram together with any such change.
 - CORS in `backend/app/main.py` is intentionally permissive (`allow_origins=["*"]`) for local development. Don't tighten it without confirming the deployment story.
+- When adding a new metric to `metrics.py`, also add a test case in `backend/app/rules/tests/` and verify the metric appears in `GET /rules/metrics`.

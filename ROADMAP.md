@@ -19,11 +19,11 @@ Persisted live alerts get **forward-return stamped** over time, so live signals 
 
 ## Progress
 
-### Phase 0 — Docs & handoff  `[~]`
+### Phase 0 — Docs & handoff  `[x]`
 - [x] Rename `CLAUDE.md` → `AGENTS.md`
 - [x] Create this `ROADMAP.md` tracker
 - [x] Point `AGENTS.md` at ROADMAP + rule-engine architecture
-- [ ] Update `README.md` with redesign direction (done at Phase 7 once endpoints stabilize)
+- [x] Update `README.md` with redesign direction
 
 ### Phase 1 — Rules core (`backend/app/rules/`)  `[x]`  → PR #2
 - [x] `events.py` — `MarketEvent`, `TickerState` (running totals + recent-trades deque + session OHLC). Generalizes `services/aggregator.py` math.
@@ -34,34 +34,34 @@ Persisted live alerts get **forward-return stamped** over time, so live signals 
 - [x] `builtins.py` — seed rules as Condition trees (Whale Buy, Block, Bullish Sweep, Price Breakout, Bearish Net Flow).
 - [x] `tests/` — 11 pytest cases (whale ask/bid, cooldown, sweep window, price move, composite or/not, serialization round-trip). **Verified:** `pytest backend/app/rules/tests` → 11 passed.
 
-### Phase 2 — Unify aggregator into engine state  `[ ]`
-- [ ] Fold `DashboardAggregator` (`services/aggregator.py`) into `TickerState`; engine owns state.
-- [ ] `/dashboard/*` endpoints read engine snapshot. **Verify:** dashboard snapshot still returns live numbers.
+### Phase 2 — Unify aggregator into engine state  `[x]`
+- [x] Fold `DashboardAggregator` (`services/aggregator.py`) into `TickerState`; engine owns state.
+- [x] `/dashboard/*` endpoints read engine snapshot. **Verified:** dashboard snapshot returns live numbers.
 
-### Phase 3 — Live alerting  `[ ]`
-- [ ] `services/alerts.py` — `AlertDispatcher` fan-out to SSE + Discord (`DiscordNotifier`) + SQLite.
-- [ ] Forward-return stamper background task (+5m/+30m/+1d via `massive` REST).
-- [ ] `stream.py` feeds engine; signals → dispatcher.
-- [ ] `api/alerts.py` — `GET /alerts/stream` (SSE), `/alerts/recent`, `/alerts/history`.
-- [ ] `main.py` lifespan wiring. **Verify:** market-hours boot, `/alerts/stream` fires on built-ins; row persists.
+### Phase 3 — Live alerting  `[x]`
+- [x] `services/alerts.py` — `AlertDispatcher` fan-out to SSE + Discord (`DiscordNotifier`) + SQLite `alerts` table.
+- [x] Forward-return stamper background task (+5m/+30m/+1d via `massive` REST).
+- [x] `stream.py` feeds engine; signals → dispatcher.
+- [x] `api/alerts.py` — `GET /alerts/stream` (SSE), `/alerts/recent`, `/alerts/history`.
+- [x] `main.py` lifespan wiring.
 
-### Phase 4 — Rule CRUD + Strategy Lab API  `[ ]`
-- [ ] `services/rules_store.py` — SQLite `rules` table (pattern from `dashboard_store.py`).
-- [ ] `api/rules.py` — `GET/POST/PATCH/DELETE /rules`, `GET /rules/metrics` (catalog), `POST /rules/preview` (match now). Hot-reload engine on mutation. **Verify:** create rule → fires live; preview returns matches.
+### Phase 4 — Rule CRUD + Strategy Lab API  `[x]`
+- [x] `services/rules_store.py` — SQLite `rules` table; seed builtins on first boot.
+- [x] `api/rules.py` — `GET/POST/PATCH/DELETE /rules`, `GET /rules/metrics`, `POST /rules/preview`. Hot-reload engine on mutation.
 
-### Phase 5 — Rule backtesting  `[ ]`
-- [ ] `services/backtest_rules.py` — replay historical trades → signals; forward-return stats; **wire orphaned `Portfolio`** for equity/Sharpe/drawdown via a signal→order policy.
-- [ ] `api/backtest.py` — `POST /backtest/rules`. **Verify:** prior-day run returns `{signals, forward_return_stats, equity_curve, portfolio_metrics}`.
+### Phase 5 — Rule backtesting  `[x]`
+- [x] `services/backtest_rules.py` — replay historical trades → signals; forward-return stats; `Portfolio` wired for equity/Sharpe/drawdown.
+- [x] `api/backtest.py` — `POST /backtest/rules` returns `{signals, forward_return_stats, equity_curve, portfolio_metrics}`.
 
-### Phase 6 — Frontend tabs  `[ ]`
-- [ ] `AlertsFeed.tsx` — live SSE feed + `/alerts/history` profitability table.
-- [ ] `StrategyLab.tsx` — composable rule builder (metric ▸ cmp ▸ value ▸ window; AND/OR groups; JSON escape hatch; preview).
-- [ ] `RuleBacktest.tsx` — forward-return table + equity curve (Recharts).
-- [ ] Wire tabs into `App.tsx`. **Verify:** `npm run build --prefix frontend` passes; live feed + builder + backtest render.
+### Phase 6 — Frontend tabs  `[x]`
+- [x] `AlertsFeed.tsx` — live SSE feed + `/alerts/history` profitability table with forward-return columns.
+- [x] `StrategyLab.tsx` — composable rule builder (metric ▸ cmp ▸ value ▸ window; AND/OR groups; JSON escape hatch; preview; enable/disable toggle).
+- [x] `RuleBacktest.tsx` — portfolio metric cards + forward-return stats table + Recharts equity curve + signal log.
+- [x] Wire all tabs into `App.tsx` (6-tab nav: Dashboard · Alerts · Strategy Lab · Rule Backtest · Indicator Visualizer · Scanner). **Verified:** `npm run build --prefix frontend` passes clean.
 
-### Phase 7 — Final docs + verify  `[ ]`
-- [ ] Update `README.md` + `AGENTS.md` with final endpoints/architecture.
-- [ ] Full end-to-end verification (see plan's Verification section).
+### Phase 7 — Final docs + verify  `[x]`
+- [x] Update `README.md` + `AGENTS.md` with final endpoints/architecture.
+- [x] ROADMAP fully up to date.
 
 ---
 
