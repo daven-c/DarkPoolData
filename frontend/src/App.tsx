@@ -7,9 +7,14 @@ import {
   AlertTriangle,
   Send,
   MessageSquare,
-  LayoutGrid
+  LayoutGrid,
+  Bell,
+  FlaskConical,
 } from "lucide-react";
 import TickerDashboard from "./TickerDashboard";
+import AlertsFeed from "./AlertsFeed";
+import StrategyLab from "./StrategyLab";
+import RuleBacktest from "./RuleBacktest";
 import {
   ResponsiveContainer,
   LineChart,
@@ -28,7 +33,7 @@ import {
 const API_BASE = "http://localhost:8000/api/v1";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"scanner" | "backtester" | "dashboard">("dashboard");
+  const [activeTab, setActiveTab] = useState<"scanner" | "backtester" | "dashboard" | "alerts" | "strategy" | "rulebacktest">("dashboard");
   const [backendStatus, setBackendStatus] = useState<"connecting" | "online" | "offline">("connecting");
 
   // Scanner state
@@ -170,15 +175,24 @@ export default function App() {
         </div>
 
         {/* Navigation Tabs */}
-        <nav style={{ display: "flex", gap: "8px" }}>
+        <nav style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
           <button className={`tab-btn ${activeTab === "dashboard" ? "active" : ""}`} onClick={() => setActiveTab("dashboard")}>
-            <LayoutGrid size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} /> Ticker Dashboard
+            <LayoutGrid size={15} style={{ marginRight: "5px", verticalAlign: "middle" }} /> Ticker Dashboard
+          </button>
+          <button className={`tab-btn ${activeTab === "alerts" ? "active" : ""}`} onClick={() => setActiveTab("alerts")}>
+            <Bell size={15} style={{ marginRight: "5px", verticalAlign: "middle" }} /> Alerts
+          </button>
+          <button className={`tab-btn ${activeTab === "strategy" ? "active" : ""}`} onClick={() => setActiveTab("strategy")}>
+            <FlaskConical size={15} style={{ marginRight: "5px", verticalAlign: "middle" }} /> Strategy Lab
+          </button>
+          <button className={`tab-btn ${activeTab === "rulebacktest" ? "active" : ""}`} onClick={() => setActiveTab("rulebacktest")}>
+            <BarChart3 size={15} style={{ marginRight: "5px", verticalAlign: "middle" }} /> Rule Backtest
           </button>
           <button className={`tab-btn ${activeTab === "backtester" ? "active" : ""}`} onClick={() => setActiveTab("backtester")}>
-            <BarChart3 size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} /> Indicator Visualizer
+            <Activity size={15} style={{ marginRight: "5px", verticalAlign: "middle" }} /> Indicator Viz
           </button>
           <button className={`tab-btn ${activeTab === "scanner" ? "active" : ""}`} onClick={() => setActiveTab("scanner")}>
-            <TrendingUp size={16} style={{ marginRight: "6px", verticalAlign: "middle" }} /> Dark Pool Scanner
+            <TrendingUp size={15} style={{ marginRight: "5px", verticalAlign: "middle" }} /> Scanner
           </button>
         </nav>
 
@@ -203,6 +217,15 @@ export default function App() {
 
         {/* VIEW 1: TICKER DASHBOARD */}
         {activeTab === "dashboard" && <TickerDashboard />}
+
+        {/* VIEW 2: ALERTS FEED */}
+        {activeTab === "alerts" && <AlertsFeed />}
+
+        {/* VIEW 3: STRATEGY LAB */}
+        {activeTab === "strategy" && <StrategyLab />}
+
+        {/* VIEW 4: RULE BACKTEST */}
+        {activeTab === "rulebacktest" && <RuleBacktest />}
 
         {/* VIEW 2: DARK POOL SCANNER */}
         {activeTab === "scanner" && (
