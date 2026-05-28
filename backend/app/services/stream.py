@@ -1,11 +1,13 @@
 import threading
+import time
 from typing import List, Optional
 
 from massive import WebSocketClient
 from massive.websocket.models import Feed, Market
 
 from backend.app.core.config import settings
-from backend.app.services.aggregator import DashboardAggregator
+from backend.app.rules.engine import RuleEngine
+from backend.app.rules.events import MarketEvent
 
 
 _FEED_MAP = {
@@ -15,14 +17,26 @@ _FEED_MAP = {
 
 
 class DashboardStreamer:
-    """Owns the Massive WebSocket connection in a background daemon thread
-    and routes incoming TRF trades into the aggregator.
+    """Owns the Massive WebSocket connection in a background daemon thread.
+
+    Each incoming TRF (dark-pool) trade is converted to a MarketEvent and fed
+    into RuleEngine.process(), which updates TickerState and evaluates rules.
+    The engine's SSE fan-out notifies dashboard subscribers automatically.
+    Non-TRF trades (exchange != DASHBOARD_TRF_EXCHANGE_ID) are dropped.
     """
 
-    def __init__(self, api_key: str, universe: List[str], aggregator: DashboardAggregator):
+    def __init__(
+        self,
+        api_key: str,
+        universe: List[str],
+        engine: RuleEngine,
+        alert_callback=None,
+    ):
         self.api_key = api_key
         self.universe = universe
-        self.aggregator = aggregator
+        self.engine = engine
+        # Optional callback for Phase 3: alert_callback(List[Signal]) -> None
+        self.alert_callback = alert_callback
         self._client: Optional[WebSocketClient] = None
         self._thread: Optional[threading.Thread] = None
         self._stopped = threading.Event()
@@ -62,7 +76,29 @@ class DashboardStreamer:
             exchange = getattr(m, "exchange", None)
             if symbol is None or price is None or size is None or exchange is None:
                 continue
-            self.aggregator.apply_trade(symbol, float(price), int(size), int(exchange))
+            # Only process dark-pool (TRF) trades
+            if int(exchange) != settings.DASHBOARD_TRF_EXCHANGE_ID:
+                continue
+
+            # Convert WS timestamp to epoch seconds
+            ts_raw = getattr(m, "sip_timestamp", None) or getattr(m, "timestamp", None)
+            if ts_raw is None:
+                ts = time.time()
+            elif ts_raw > 1_000_000_000_000:  # nanoseconds
+                ts = ts_raw / 1_000_000_000.0
+            else:  # milliseconds
+                ts = ts_raw / 1_000.0
+
+            event = MarketEvent(
+                symbol=symbol,
+                ts=ts,
+                price=float(price),
+                size=int(size),
+                exchange=int(exchange),
+            )
+            signals = self.engine.process(event)
+            if signals and self.alert_callback is not None:
+                self.alert_callback(signals)
 
     def stop(self) -> None:
         # WebSocketClient.close() is an async coroutine that needs the WS internal loop,

@@ -178,6 +178,37 @@ class MassiveService:
             out[ticker] = total
         return out
 
+    def get_last_price(self, ticker: str) -> Optional[float]:
+        """Return the most recent trade price for a ticker (for forward-return stamping)."""
+        client = self._get_client()
+        try:
+            result = client.get_last_trade(ticker)
+            r = getattr(result, "results", None)
+            if r is None:
+                return None
+            return float(getattr(r, "price", getattr(r, "p", None)))
+        except Exception as e:
+            print(f"[MassiveService] get_last_price({ticker}) failed: {e}")
+            return None
+
+    def get_close_on_date(self, ticker: str, date_str: str) -> Optional[float]:
+        """Return closing price for a ticker on a specific date (for +1d stamping)."""
+        client = self._get_client()
+        try:
+            bars = list(client.list_aggs(
+                ticker=ticker,
+                multiplier=1,
+                timespan="day",
+                from_=date_str,
+                to=date_str,
+                limit=1,
+            ))
+            if bars:
+                return float(bars[0].close)
+        except Exception as e:
+            print(f"[MassiveService] get_close_on_date({ticker}, {date_str}) failed: {e}")
+        return None
+
     def get_daily_aggs(self, ticker: str, from_date: str, to_date: str) -> List[Dict[str, Any]]:
         """
         Fetches general daily bars.

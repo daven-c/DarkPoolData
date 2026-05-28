@@ -2,202 +2,222 @@
 
 An institutional-grade platform to ingest, explore, backtest, and alert on off-exchange (dark pool/TRF) trade data using the **Massive.com** (formerly Polygon.io) market data APIs.
 
-The platform integrates:
-- A **livestreaming Ticker Dashboard** powered by the Massive WebSocket feed (TRF trades → per-symbol running totals, AT BID / AT ASK split, block detection).
-- A FastAPI backend router with SSE streaming and a SQLite cache for prior-day totals.
-- A React + Vite dashboard web app (Recharts + glassmorphic dark mode).
-- A custom Python backtesting engine for strategy simulation.
-- A Discord gateway announcer for institutional-flow alerts.
-- Interactive Marimo notebooks for ad-hoc exploration.
+**Current design (v2 — Managed Signals):** a central `RuleEngine` evaluates composable condition trees against every incoming TRF trade. When a rule fires it broadcasts a `Signal` to an in-app SSE feed, a Discord channel, and a SQLite history table. Each persisted alert is later stamped with +5m/+30m/+1d forward returns so signal quality is measurable. Admins compose and iterate rules in a Strategy Lab UI; rule-based backtests produce portfolio P&L alongside forward-return hit rates.
 
 ---
 
 ## 📂 Project Architecture
 
 ```
-├── backend/
-│   ├── app/
-│   │   ├── api/                 # API Router controllers
-│   │   │   ├── darkpool.py       # TRF trade details and aggregates (single-symbol scanner)
-│   │   │   ├── backtest.py       # Runs historical backtests
-│   │   │   └── dashboard.py      # Livestream dashboard: snapshot + SSE stream + universe
-│   │   ├── core/
-│   │   │   └── config.py         # Configuration variables loader
-│   │   ├── services/
-│   │   │   ├── massive.py        # Massive REST client (trades, aggs, grouped daily)
-│   │   │   ├── aggregator.py     # In-memory running totals + tick-test bid/ask classifier
-│   │   │   ├── stream.py         # Massive WebSocket subscriber (T.<ticker>) → aggregator
-│   │   │   ├── dashboard_store.py # SQLite cache for prior-day totals (% change column)
-│   │   │   └── discord.py        # Broadcaster to bot receiver webhook
-│   │   └── main.py              # FastAPI app + lifespan that boots universe/WS/cache
-│   └── .env                      # Local API keys and credentials
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx               # Tab shell + Backtest Engine + Dark Pool Scanner views
-│   │   ├── TickerDashboard.tsx   # Livestreaming dashboard (SSE → sortable paginated table)
-│   │   ├── index.css             # Premium dark mode glassmorphic stylesheet
-│   │   └── main.tsx
-│   └── package.json              # Node dependencies (React 19, recharts, lucide-react)
-├── backtester/
-│   ├── engine.py            # Chronological tick-by-tick simulation loop
-│   ├── portfolio.py         # Position management, trade logs, and metrics math
-│   ├── data.py              # APIDataProvider, CSVDataProvider, MockDataProvider
-│   ├── strategy.py          # Abstract base Strategy class
-│   └── strategies.py        # Configurable indicator strategies
-├── bot/
-│   └── bot.py               # discord.py bot + integrated aiohttp webhook server
-├── notebooks/
-│   ├── darkpool_exploration.py # Marimo interactive data notebook
-│   └── csv_downloader.py        # Marimo utility to download and inspect tick CSVs
-└── requirements.txt          # Shared Python dependencies
+backend/app/
+  api/
+    darkpool.py          # TRF trade details + aggregates (single-symbol scanner)
+    backtest.py          # POST /backtest/run (indicator viz) + POST /backtest/rules (rule P&L)
+    dashboard.py         # Livestream: snapshot + SSE stream + universe list
+    alerts.py            # GET /alerts/stream (SSE) · /alerts/recent · /alerts/history
+    rules.py             # CRUD /rules · /rules/metrics · /rules/preview
+  rules/
+    events.py            # MarketEvent DTO · TickerState (tick-test, running totals, OHLC)
+    metrics.py           # 12-metric catalog for condition builder
+    conditions.py        # Leaf + Composite (AND/OR/NOT) condition trees
+    rule.py              # Rule + Signal; JSON round-trip
+    engine.py            # RuleEngine: process() · snapshot() · preview() · subscribe() SSE
+    builtins.py          # 5 seed rules (Whale Buy, Block, Bullish Sweep, Breakout, Net Flow)
+    tests/               # 11 pytest cases
+  services/
+    massive.py           # Massive REST client (trades, aggs, last price, daily close)
+    stream.py            # Massive WebSocket → MarketEvent → RuleEngine
+    alerts.py            # AlertStore (SQLite) · AlertDispatcher (SSE+Discord+DB) · stamper
+    rules_store.py       # SQLite rules table · seed builtins · hot-reload helper
+    backtest_rules.py    # Historical trade replay → signals + forward returns + Portfolio P&L
+    dashboard_store.py   # SQLite cache for prior-day TRF totals (% change column)
+    discord.py           # Webhook broadcaster to bot receiver
+  core/
+    config.py            # pydantic-settings; reads .env; all tunable knobs
+  main.py                # FastAPI app + lifespan (engine · dispatcher · streamer · stamper)
+
+frontend/src/
+  App.tsx                # 6-tab shell
+  TickerDashboard.tsx    # Livestreaming TRF table (SSE → sortable paginated table)
+  AlertsFeed.tsx         # Live signal feed (SSE) + history with forward-return columns
+  StrategyLab.tsx        # Admin rule builder: conditions, groups, preview, CRUD
+  RuleBacktest.tsx       # Rule backtest: portfolio cards + return stats + equity curve
+  index.css              # Glassmorphic dark mode stylesheet
+
+backtester/
+  engine.py              # Chronological tick-by-tick simulation loop
+  portfolio.py           # Position management, trade logs, Sharpe/drawdown metrics
+  data.py                # APIDataProvider · CSVDataProvider · MockDataProvider
+  strategy.py            # Abstract base Strategy
+  strategies.py          # DarkPoolSpikeStrategy, SMACrossStrategy
+
+bot/bot.py               # discord.py client + aiohttp webhook server (:5000 POST /alert)
+notebooks/               # Marimo notebooks for ad-hoc exploration
 ```
 
 ---
 
-## 🛠️ Prerequisites & Environment Setup
+## 🛠️ Prerequisites & Setup
 
-Ensure you have **Python 3.10+** and **Node 18+** installed locally.
+**Python 3.10+** and **Node 18+** required.
 
-### 1. Create a Unified Virtual Environment
-Since the shared `backtester` code is used by the backend, Discord bot, and notebooks, configure a single virtual environment at the project root:
+### 1. Virtual Environment (single venv at repo root)
 
 ```bash
-# From the project root directory
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install shared requirements
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment Variables
-Copy and fill in your API credentials in the configuration file located at `.env`:
+> All Python entry points run from the repo root so that `backend/` and `backtester/` resolve correctly on `sys.path`.
+
+### 2. Environment Variables (`.env`)
 
 ```env
 # Massive.com API Key (formerly Polygon.io)
-MASSIVE_API_KEY=YOUR_MASSIVE_API_KEY_HERE
+MASSIVE_API_KEY=your_key_here
 
-# Discord Configuration (Optional)
-DISCORD_BOT_TOKEN=YOUR_DISCORD_BOT_TOKEN_HERE
-DISCORD_CHANNEL_ID=YOUR_DISCORD_CHANNEL_ID_HERE
+# Discord (optional — signals still fire without this)
+DISCORD_BOT_TOKEN=your_token
+DISCORD_CHANNEL_ID=your_channel_id
+DISCORD_WEBHOOK_URL=http://localhost:5000/alert
 
-# Dashboard (Optional - defaults shown)
-DASHBOARD_UNIVERSE_SIZE=100     # Top-N tickers by prior-day dollar volume
-DASHBOARD_WS_FEED=delayed       # "realtime" or "delayed" (your plan tier)
-DASHBOARD_SEED_PRIOR_DAY=True   # Backfill % change column on first boot
+# Dashboard (defaults shown)
+DASHBOARD_UNIVERSE_SIZE=100          # Top-N tickers by prior-day DP dollar volume
+DASHBOARD_WS_FEED=delayed            # "realtime" or "delayed" (match your plan tier)
+DASHBOARD_SEED_PRIOR_DAY=True        # Backfill % change on boot
+
+# Alerts (defaults shown)
+ALERTS_SSE_QUEUE_MAX=1000
+ALERTS_DEFAULT_COOLDOWN_S=300        # Per (rule, symbol) cooldown between signals
+ALERTS_FORWARD_HORIZONS_MIN=[5,30,1440]  # Horizons stamped on persisted alerts
+
+# Backtest (defaults shown)
+BACKTEST_DEFAULT_NOTIONAL=10000      # Notional per signal in rule backtest
 ```
 
-> **Note on data tiers**: the Massive WebSocket has separate URLs for real-time and delayed feeds. If your plan only includes delayed data, keep `DASHBOARD_WS_FEED=delayed` — the backend will otherwise authenticate but receive zero ticks.
+> **Delayed feed note**: if your Massive plan is delayed-only, set `DASHBOARD_WS_FEED=delayed`. Using `realtime` on a delayed-only key authenticates but receives no ticks.
+
+> **No API key**: if `MASSIVE_API_KEY` is unset the backtest endpoints fall back to `MockDataProvider` automatically — all routes remain functional for UI testing.
 
 ---
 
 ## 🚀 Running the Services
 
-Activate the virtual environment (`source .venv/bin/activate`) before starting any Python processes.
-
-### Quickstart (Backend + Frontend)
+### Quickstart
 
 ```bash
 # Terminal 1 — backend
 source .venv/bin/activate
-python3 backend/app/main.py
+python3 backend/app/main.py        # http://localhost:8000  (/docs for Swagger)
 
 # Terminal 2 — frontend
-npm install --prefix frontend     # one-time
-npm run dev --prefix frontend
+npm install --prefix frontend      # first time only
+npm run dev --prefix frontend      # http://localhost:5173
 ```
 
-Then open **http://localhost:5173**. The **Ticker Dashboard** tab is the default view.
+### Backend startup sequence
 
----
+On `python3 backend/app/main.py` the lifespan hook:
+1. Opens `data/rules.db`, seeds the 5 built-in rules if the table is empty, loads them into `RuleEngine`.
+2. Calls `get_grouped_daily_aggs` for the prior trading day, picks top-N by TRF dollar volume, subscribes `T.<ticker>` on the Massive WebSocket.
+3. Starts `AlertDispatcher` (SSE fan-out + Discord + SQLite write).
+4. Starts the forward-return stamper (runs every 60 s; fetches price at +5m/+30m/+1d and updates `data/alerts.db`).
 
-### 1. Start the FastAPI Backend Server
-The backend handles routing, aggregates TRF metrics from Massive, runs the WebSocket livestream, executes simulations, and triggers alerts.
+### Discord bot (optional)
 
 ```bash
-python3 backend/app/main.py
+python3 bot/bot.py    # webhook listener on :5000
 ```
-* The API boots on `http://localhost:8000`.
-* On startup, the lifespan hook:
-  1. Calls `get_grouped_daily_aggs` for the prior trading day and picks the top-N tickers by dollar volume (configurable, default 100).
-  2. Opens a Massive WebSocket connection and subscribes to `T.<ticker>` for that universe.
-  3. Kicks off a background thread to backfill prior-day TRF totals into `data/dashboard_cache.db` (powers the **DAILY AMOUNT CHANGE** column).
-* Open `http://localhost:8000/docs` for the interactive Swagger documentation.
 
-Key endpoints:
-| Endpoint | Purpose |
-|---|---|
-| `GET /api/v1/dashboard/snapshot` | Paginated, sortable current snapshot of the dashboard universe |
-| `GET /api/v1/dashboard/stream` | Server-Sent Events feed of per-trade aggregator deltas |
-| `GET /api/v1/dashboard/universe` | Active top-N ticker list |
-| `GET /api/v1/darkpool/summary` | Single-symbol TRF aggregates for a given date |
-| `GET /api/v1/darkpool/trades` | Raw TRF tick log for a single symbol/date |
-| `POST /api/v1/backtest/run` | Run a strategy over historical data |
-
-### 2. Launch the React Web Application
-Install the frontend node modules and launch the Vite dev server:
-
-```bash
-npm install --prefix frontend
-npm run dev --prefix frontend
-```
-* The glassmorphic dashboard runs at `http://localhost:5173`.
-* Three tabs:
-  * **Ticker Dashboard** (default) — livestreaming TRF table for the top-N universe with sortable columns, ticker logos, per-row CSV export. Subscribes to `/dashboard/stream` via `EventSource` for live deltas.
-  * **Indicator Visualizer** — configure and run a backtesting strategy, view equity curves, push manual alerts to Discord.
-  * **Dark Pool Scanner** — single-symbol deep dive: pie chart of lit vs. off-exchange volume, institutional block trade log.
-
-### 3. Start the Discord Alert Bot (Optional)
-Starts the bot client and activates its webhook listener:
-
-```bash
-python3 bot/bot.py
-```
-* The bot registers commands (e.g. `!status`, `!ping`) and listens for POST events on `http://localhost:5000/alert` to broadcast trade indicators to your channel.
-
-### 4. Open the Marimo Notebooks
-To interactively prototype custom strategies:
+### Marimo notebooks
 
 ```bash
 marimo edit notebooks/darkpool_exploration.py
 ```
 
-To run the utility for downloading trade details to CSV files:
+---
+
+## 📡 API Endpoints (`/api/v1/…`)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/dashboard/snapshot` | Live universe snapshot (sortable, paginated) |
+| `GET` | `/dashboard/stream` | SSE — per-trade `TickerState` deltas |
+| `GET` | `/dashboard/universe` | Active ticker list |
+| `GET` | `/darkpool/summary` | Single-symbol TRF aggregates for a date |
+| `GET` | `/darkpool/trades` | Raw TRF tick log for a symbol/date |
+| `POST` | `/backtest/run` | Indicator-strategy backtest (equity curve + trade log) |
+| `POST` | `/backtest/rules` | Rule-based backtest → `{signals, forward_return_stats, equity_curve, portfolio_metrics}` |
+| `GET` | `/alerts/stream` | SSE — live `Signal` events as they fire |
+| `GET` | `/alerts/recent` | Most-recent N alerts (default 100) |
+| `GET` | `/alerts/history` | Historical alerts with `+5m/+30m/+1d` returns; `?symbol=&rule_name=&limit=` |
+| `GET` | `/rules` | List all admin rules |
+| `POST` | `/rules` | Create rule + hot-reload engine |
+| `PATCH` | `/rules/{id}` | Partial-update rule + hot-reload engine |
+| `DELETE` | `/rules/{id}` | Delete rule + hot-reload engine |
+| `GET` | `/rules/metrics` | Metric catalog for the builder UI |
+| `POST` | `/rules/preview` | Evaluate draft rule against current live `TickerState`s → matched symbols |
+
+---
+
+## 📊 Dashboard columns
+
+| Column | Source |
+|--------|--------|
+| **TOTAL AMOUNT** | Σ (price × size) of all TRF trades today (exchange ID 4) |
+| **DAILY AMOUNT CHANGE** | `(today − prior_day) / prior_day × 100`; `prior_day` from `data/dashboard_cache.db` |
+| **AT ASK / AT BID** | Lee-Ready tick test: uptick → at_ask, downtick → at_bid, equal → prior side |
+| **NET VALUE** | `AT ASK − AT BID` |
+| **DP TRADES** | Count of TRF trades received today |
+| **BLOCK TRADES** | Count where `size ≥ 10 000` |
+
+---
+
+## 🔔 Built-in Signal Rules
+
+| Rule | Logic | Severity |
+|------|-------|----------|
+| **Whale Buy** | Single trade notional ≥ $500k AND side = ask | critical |
+| **Block Trade** | `is_block = true` (size ≥ 10 000 shares) | warning |
+| **Bullish Sweep** | Ask-side notional in last 5 min ≥ $1M | warning |
+| **Price Breakout** | Price move ≥ 1 % in last 10 min | info |
+| **Bearish Net Flow** | Net flow notional in last 15 min ≤ −$500k | warning |
+
+Add or modify rules at runtime via `POST /rules` or the Strategy Lab UI — the engine hot-reloads immediately.
+
+---
+
+## 🧪 Running Tests
 
 ```bash
-marimo edit notebooks/csv_downloader.py
+source .venv/bin/activate
+python3 -m pytest backend/app/rules/tests    # 11 unit tests for the rule engine
 ```
 
 ---
 
-## 📡 Ticker Dashboard internals
+## 📈 Extending with a new strategy (legacy backtester)
 
-The dashboard's columns and how they are computed:
-
-| Column | Source |
-|---|---|
-| **TOTAL AMOUNT** | Σ (price × size) of all TRF trades today (exchange ID 4) |
-| **DAILY AMOUNT CHANGE** | `(today − prior_day) / prior_day × 100` — `prior_day` from SQLite cache at `data/dashboard_cache.db` |
-| **AT ASK / AT BID** | Approximated via the Lee-Ready tick test: uptick → at_ask, downtick → at_bid, equal → retain prior side. *No NBBO quote join (v1).* |
-| **NET VALUE** | `AT ASK − AT BID` |
-| **DP TRADES** | Count of TRF trades |
-| **BLOCK TRADES** | Count of TRF trades with `size ≥ 10,000` |
-
-The aggregator runs in-memory inside the FastAPI process. The Massive WebSocket subscriber updates it on every tick and fans out deltas to any open SSE subscribers. State resets on backend restart (today's totals are rebuilt from the live stream as it accumulates).
-
-## 📈 Backtesting Custom Strategies
-
-You can create plug-and-play strategies by subclassing `Strategy` (in `backtester/strategy.py`) and implementing the `on_data` method:
+Subclass `Strategy` in `backtester/strategies.py` and implement `calculate(df)`:
 
 ```python
 from backtester import Strategy
 
 class MyStrategy(Strategy):
-    def on_data(self, current_time, data, portfolio):
-        # Fetch indicators
-        # Trigger portfolio.buy(symbol, qty, price, current_time) 
-        # or portfolio.sell(symbol, qty, price, current_time)
-        pass
+    def calculate(self, df):
+        # compute indicators, return (df_with_indicators, signals_list)
+        return df, []
 ```
 
-When calling the `/api/v1/backtest/run` endpoint, if the Massive.com API key is not configured, the engine will fallback to the `MockDataProvider` to simulate market environments so you can test integrations instantly.
+Re-export from `backtester/__init__.py` and call via `POST /backtest/run`.
+
+---
+
+## 🔭 Roadmap
+
+See `ROADMAP.md` for the full phase-by-phase tracker. Planned (not yet started):
+- **Auth** (`AUTH.md`) — Supabase invite-only gate
+- **Deployment** (`DEPLOYMENT.md`) — Fly.io backend + Vercel frontend → `darkpool.davenc.dev`
+- **Nightly screener service** — full `services/screener.py` with cron scheduling
+- **NBBO quote-join** for exact at-bid/at-ask (v1.1; tick-test sufficient for now)

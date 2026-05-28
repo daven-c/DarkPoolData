@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import threading
@@ -15,10 +16,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api import backtest, darkpool, dashboard
+from backend.app.api import alerts as alerts_api
+from backend.app.api import rules as rules_api
 from backend.app.core.config import settings
-from backend.app.services.aggregator import DashboardAggregator
+from backend.app.rules import RuleEngine
+from backend.app.services.alerts import AlertDispatcher, AlertStore, forward_return_stamper
 from backend.app.services.dashboard_store import DashboardStore
+from backend.app.services.discord import discord_notifier
 from backend.app.services.massive import MassiveService
+from backend.app.services.rules_store import RulesStore
 from backend.app.services.stream import DashboardStreamer
 
 
@@ -32,13 +38,15 @@ def _prior_trading_day(today: datetime) -> str:
 def _seed_prior_totals(
     massive: MassiveService,
     store: DashboardStore,
-    prior_totals: dict,
+    engine: RuleEngine,
     universe: list,
     date_str: str,
 ) -> None:
+    """Fetch prior-day dark-pool totals and seed them into the engine's TickerState."""
     cached = store.get_totals(date_str, universe)
     missing = [t for t in universe if t not in cached]
-    prior_totals.update(cached)
+    for sym, total in cached.items():
+        engine.set_prior_total(sym, total)
     if not missing:
         print(f"[dashboard] prior-day totals served from cache for {date_str}", flush=True)
         return
@@ -46,8 +54,9 @@ def _seed_prior_totals(
     fresh = massive.get_prior_day_dark_totals(missing, date_str)
     if fresh:
         store.upsert_totals(date_str, fresh)
-        prior_totals.update(fresh)
-    print(f"[dashboard] prior-day seed complete ({len(prior_totals)} tickers)", flush=True)
+        for sym, total in fresh.items():
+            engine.set_prior_total(sym, total)
+    print(f"[dashboard] prior-day seed complete ({len(cached) + len(fresh)} tickers)", flush=True)
 
 
 @asynccontextmanager
@@ -63,23 +72,67 @@ async def lifespan(app: FastAPI):
         print(f"[dashboard] universe init failed, falling back to empty: {e}", flush=True)
         universe = []
 
-    aggregator = DashboardAggregator(universe)
-    prior_totals: dict = {}
+    # -----------------------------------------------------------------------
+    # Rules store — seed builtins on first run, then load from DB
+    # -----------------------------------------------------------------------
+    rules_store = RulesStore()
+    rules_store.seed_builtins()          # no-op if table already has rows
+    active_rules = rules_store.as_rules()
+    print(f"[rules] loaded {len(active_rules)} rules from store", flush=True)
+    app.state.rules_store = rules_store
 
-    app.state.aggregator = aggregator
-    app.state.prior_totals = prior_totals
+    # -----------------------------------------------------------------------
+    # Central RuleEngine — single source of truth for state + signals
+    # -----------------------------------------------------------------------
+    engine = RuleEngine(
+        rules=active_rules,
+        universe=universe,
+        block_threshold=settings.DASHBOARD_BLOCK_SIZE_THRESHOLD,
+        sse_queue_max=settings.DASHBOARD_SSE_QUEUE_MAX,
+    )
+    app.state.engine = engine
     app.state.prior_date = prior_date
 
+    # -----------------------------------------------------------------------
+    # Alert pipeline — SSE + Discord + SQLite + forward-return stamper
+    # -----------------------------------------------------------------------
+    alert_store = AlertStore()
+    dispatcher = AlertDispatcher(
+        store=alert_store,
+        discord=discord_notifier,
+        sse_queue_max=settings.ALERTS_SSE_QUEUE_MAX,
+        discord_enabled=settings.ALERTS_DISCORD_ENABLED,
+    )
+    await dispatcher.start()
+    app.state.alert_store = alert_store
+    app.state.alert_dispatcher = dispatcher
+
+    stamper_task = asyncio.create_task(
+        forward_return_stamper(alert_store, massive, settings.ALERTS_FORWARD_HORIZONS_MIN),
+        name="forward-return-stamper",
+    )
+
+    # -----------------------------------------------------------------------
+    # WebSocket streamer — feeds engine; fired signals → dispatcher
+    # -----------------------------------------------------------------------
     streamer = None
     if universe and settings.MASSIVE_API_KEY:
-        streamer = DashboardStreamer(settings.MASSIVE_API_KEY, universe, aggregator)
+        streamer = DashboardStreamer(
+            settings.MASSIVE_API_KEY,
+            universe,
+            engine,
+            alert_callback=dispatcher.enqueue,
+        )
         streamer.start()
         app.state.streamer = streamer
 
+    # -----------------------------------------------------------------------
+    # Prior-day totals (background thread — slow REST call)
+    # -----------------------------------------------------------------------
     if settings.DASHBOARD_SEED_PRIOR_DAY and universe:
         threading.Thread(
             target=_seed_prior_totals,
-            args=(massive, store, prior_totals, universe, prior_date),
+            args=(massive, store, engine, universe, prior_date),
             name="dashboard-seed",
             daemon=True,
         ).start()
@@ -87,6 +140,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        stamper_task.cancel()
         if streamer is not None:
             streamer.stop()
 
@@ -109,6 +163,8 @@ app.add_middleware(
 app.include_router(darkpool.router, prefix=f"{settings.API_V1_STR}/darkpool", tags=["DarkPool"])
 app.include_router(backtest.router, prefix=f"{settings.API_V1_STR}/backtest", tags=["Backtester"])
 app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["Dashboard"])
+app.include_router(alerts_api.router, prefix=f"{settings.API_V1_STR}/alerts", tags=["Alerts"])
+app.include_router(rules_api.router, prefix=f"{settings.API_V1_STR}/rules", tags=["Rules"])
 
 
 @app.get("/")

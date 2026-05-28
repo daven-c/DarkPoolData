@@ -1,6 +1,5 @@
-import asyncio
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -22,28 +21,14 @@ SORTABLE_FIELDS = {
 
 
 def _build_rows(request: Request) -> List[Dict[str, Any]]:
-    aggregator = request.app.state.aggregator
-    prior_totals: Dict[str, float] = request.app.state.prior_totals
-    snap = aggregator.snapshot()
-    rows: List[Dict[str, Any]] = []
-    for symbol, stats in snap.items():
-        total = stats["total_amount"]
-        prior = prior_totals.get(symbol, 0.0)
-        if prior > 0:
-            change_pct = (total - prior) / prior * 100.0
-        else:
-            change_pct = None
-        rows.append({
-            "symbol": symbol,
-            "total_amount": total,
-            "daily_change_pct": change_pct,
-            "at_ask": stats["at_ask"],
-            "at_bid": stats["at_bid"],
-            "net_value": stats["at_ask"] - stats["at_bid"],
-            "dp_trades": stats["dp_trades"],
-            "block_trades": stats["block_trades"],
-        })
-    return rows
+    """Build the full dashboard row list from the engine snapshot.
+
+    Each row comes from TickerState.dashboard_row() which already includes
+    daily_change_pct (computed from prior_day_total seeded at startup).
+    """
+    engine = request.app.state.engine
+    snap = engine.snapshot()           # {symbol: dashboard_row_dict}
+    return list(snap.values())
 
 
 @router.get("/snapshot")
@@ -74,27 +59,13 @@ def get_snapshot(
 
 @router.get("/stream")
 async def stream(request: Request):
-    aggregator = request.app.state.aggregator
-    prior_totals: Dict[str, float] = request.app.state.prior_totals
+    engine = request.app.state.engine
 
     async def event_generator():
-        async for row in aggregator.subscribe():
+        async for row in engine.subscribe():
             if await request.is_disconnected():
                 break
-            symbol = row["symbol"]
-            prior = prior_totals.get(symbol, 0.0)
-            change_pct = (row["total_amount"] - prior) / prior * 100.0 if prior > 0 else None
-            payload = {
-                "symbol": symbol,
-                "total_amount": row["total_amount"],
-                "daily_change_pct": change_pct,
-                "at_ask": row["at_ask"],
-                "at_bid": row["at_bid"],
-                "net_value": row["at_ask"] - row["at_bid"],
-                "dp_trades": row["dp_trades"],
-                "block_trades": row["block_trades"],
-            }
-            yield f"data: {json.dumps(payload)}\n\n"
+            yield f"data: {json.dumps(row)}\n\n"
 
     headers = {
         "Cache-Control": "no-cache",
@@ -105,14 +76,13 @@ async def stream(request: Request):
 
 @router.get("/universe")
 def get_universe(request: Request):
-    aggregator = request.app.state.aggregator
-    return {"tickers": aggregator.universe}
+    engine = request.app.state.engine
+    return {"tickers": engine.universe()}
 
 
 @router.get("/config")
 def get_public_config():
-    """Tunables that affect frontend behavior. Lets the React app match server limits
-    instead of hardcoding them."""
+    """Tunables that affect frontend behavior."""
     return {
         "default_limit": settings.DASHBOARD_DEFAULT_LIMIT,
         "max_limit": settings.DASHBOARD_MAX_LIMIT,
