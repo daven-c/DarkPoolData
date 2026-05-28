@@ -1,15 +1,16 @@
-# CLAUDE.md
+# AGENTS.md
 
-Guidance for Claude Code when working in this repo. See `README.md` for human-facing setup and usage docs.
+Canonical guide for AI agents (Claude Code et al.) working in this repo. (Formerly `CLAUDE.md`.) See `README.md` for human-facing setup and usage docs, and **`ROADMAP.md` for the live, checkbox-tracked status of the in-progress redesign** — always read ROADMAP.md first so you can resume mid-flight work.
 
 ## Project overview
 
-DarkPoolData is a platform for ingesting, exploring, backtesting, and alerting on off-exchange (TRF/dark pool) trade data sourced from the Massive.com (formerly Polygon.io) APIs. It is composed of four cooperating pieces that share a Python package and a single `.env`:
+DarkPoolData is a platform for ingesting, exploring, backtesting, and alerting on off-exchange (TRF/dark pool) trade data sourced from the Massive.com (formerly Polygon.io) APIs. It is composed of cooperating pieces that share a Python package and a single `.env`:
 
-- **`backend/`** — FastAPI service (entry: `backend/app/main.py`) exposing `/api/v1/darkpool/*` and `/api/v1/backtest/*`. Configuration is loaded by `backend/app/core/config.py` (pydantic-settings, reads `.env`, `backend/.env`, or `../.env`).
-- **`backtester/`** — Pure-Python simulation library imported by the backend, the Discord bot, and the notebooks. Public surface is re-exported from `backtester/__init__.py`: `Strategy`, `Portfolio`, `DataProvider`, `CSVDataProvider`, `APIDataProvider`, `MockDataProvider`, `BacktestEngine`, `DarkPoolSpikeStrategy`, `SMACrossStrategy`.
+- **`backend/`** — FastAPI service (entry: `backend/app/main.py`) exposing `/api/v1/darkpool/*`, `/api/v1/backtest/*`, `/api/v1/dashboard/*`, and (in the redesign) `/api/v1/alerts/*` and `/api/v1/rules/*`. Configuration is loaded by `backend/app/core/config.py` (pydantic-settings, reads `.env`, `backend/.env`, or `../.env`).
+- **`backend/app/rules/`** *(redesign)* — the platform's core: a `RuleEngine` that evaluates composable `Condition` trees against a stream of `MarketEvent`s, producing `Signal`s. The **same engine runs live** (WS stream → alerts) **and in backtest** (historical replay → signal-quality + Portfolio P&L). This is the load-bearing abstraction; see ROADMAP.md Part A.
+- **`backtester/`** — Pure-Python simulation library imported by the backend, the Discord bot, and the notebooks. Public surface is re-exported from `backtester/__init__.py`: `Strategy`, `Portfolio`, `DataProvider`, `CSVDataProvider`, `APIDataProvider`, `MockDataProvider`, `BacktestEngine`, `DarkPoolSpikeStrategy`, `SMACrossStrategy`. NOTE: `Portfolio` was historically orphaned (the legacy `BacktestEngine` never used it); the redesign wires it into rule-based P&L backtesting.
 - **`bot/bot.py`** — `discord.py` client with an embedded `aiohttp` webhook server on port `5000` (`POST /alert`) that the backend pushes alerts to.
-- **`frontend/`** — React 19 + Vite + TypeScript SPA. `src/App.tsx` is the single-page dashboard (Backtest Engine and Dark Pool Scanner tabs).
+- **`frontend/`** — React 19 + Vite + TypeScript SPA. `src/App.tsx` is the tab shell; tabs include Ticker Dashboard, Alerts feed, Strategy Lab, Rule Backtest, Indicator Visualizer, Scanner.
 - **`notebooks/`** — Marimo notebooks (`darkpool_exploration.py`, `csv_downloader.py`) for ad-hoc analysis. Reuse `backtester` rather than duplicating logic.
 
 ## Conventions
