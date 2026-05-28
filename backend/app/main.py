@@ -17,12 +17,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api import backtest, darkpool, dashboard
 from backend.app.api import alerts as alerts_api
+from backend.app.api import rules as rules_api
 from backend.app.core.config import settings
-from backend.app.rules import RuleEngine, default_rules
+from backend.app.rules import RuleEngine
 from backend.app.services.alerts import AlertDispatcher, AlertStore, forward_return_stamper
 from backend.app.services.dashboard_store import DashboardStore
 from backend.app.services.discord import discord_notifier
 from backend.app.services.massive import MassiveService
+from backend.app.services.rules_store import RulesStore
 from backend.app.services.stream import DashboardStreamer
 
 
@@ -71,10 +73,19 @@ async def lifespan(app: FastAPI):
         universe = []
 
     # -----------------------------------------------------------------------
+    # Rules store — seed builtins on first run, then load from DB
+    # -----------------------------------------------------------------------
+    rules_store = RulesStore()
+    rules_store.seed_builtins()          # no-op if table already has rows
+    active_rules = rules_store.as_rules()
+    print(f"[rules] loaded {len(active_rules)} rules from store", flush=True)
+    app.state.rules_store = rules_store
+
+    # -----------------------------------------------------------------------
     # Central RuleEngine — single source of truth for state + signals
     # -----------------------------------------------------------------------
     engine = RuleEngine(
-        rules=default_rules(),
+        rules=active_rules,
         universe=universe,
         block_threshold=settings.DASHBOARD_BLOCK_SIZE_THRESHOLD,
         sse_queue_max=settings.DASHBOARD_SSE_QUEUE_MAX,
@@ -153,6 +164,7 @@ app.include_router(darkpool.router, prefix=f"{settings.API_V1_STR}/darkpool", ta
 app.include_router(backtest.router, prefix=f"{settings.API_V1_STR}/backtest", tags=["Backtester"])
 app.include_router(dashboard.router, prefix=f"{settings.API_V1_STR}/dashboard", tags=["Dashboard"])
 app.include_router(alerts_api.router, prefix=f"{settings.API_V1_STR}/alerts", tags=["Alerts"])
+app.include_router(rules_api.router, prefix=f"{settings.API_V1_STR}/rules", tags=["Rules"])
 
 
 @app.get("/")
