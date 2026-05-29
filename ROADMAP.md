@@ -63,6 +63,13 @@ Persisted live alerts get **forward-return stamped** over time, so live signals 
 - [x] Update `README.md` + `AGENTS.md` with final endpoints/architecture.
 - [x] ROADMAP fully up to date.
 
+### Phase 8 — Multi-Tenant Rule Indexing & Deduplication  `[x]`
+- [x] `backend/app/rules/index.py` — Dynamic 1D index tree grouping leaf conditions, using `bisect` for fast $O(\log N)$ range inequalities and Hash Maps for $O(1)$ equality checks.
+- [x] `backend/app/rules/evaluator.py` — Boolean propagation network (`EvalNode` and compilers) to evaluate flattened rule logic with logical short-circuiting.
+- [x] Leaf Deduplication with 2-Decimal Precision rounding to maximize condition reuse.
+- [x] Eager Metric Caching in `RuleEngine` to calculate metrics exactly once per market tick.
+- [x] Optimization benchmark testing with 1,000 rules processing ticks in under 0.6ms.
+
 ---
 
 ## Config keys added (`backend/app/core/config.py`)

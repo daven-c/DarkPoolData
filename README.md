@@ -20,10 +20,12 @@ backend/app/
     events.py            # MarketEvent DTO · TickerState (tick-test, running totals, OHLC)
     metrics.py           # 12-metric catalog for condition builder
     conditions.py        # Leaf + Composite (AND/OR/NOT) condition trees
+    index.py             # Leaf condition matching indexes (binary search lists + hash maps)
+    evaluator.py         # Boolean propagation network compiler (EvalNodes)
     rule.py              # Rule + Signal; JSON round-trip
     engine.py            # RuleEngine: process() · snapshot() · preview() · subscribe() SSE
     builtins.py          # 5 seed rules (Whale Buy, Block, Bullish Sweep, Breakout, Net Flow)
-    tests/               # 11 pytest cases
+    tests/               # 15 pytest cases (test_engine.py and test_optimized_engine.py)
   services/
     massive.py           # Massive REST client (trades, aggs, last price, daily close)
     stream.py            # Massive WebSocket → MarketEvent → RuleEngine
@@ -192,7 +194,7 @@ Add or modify rules at runtime via `POST /rules` or the Strategy Lab UI — the 
 
 ```bash
 source .venv/bin/activate
-python3 -m pytest backend/app/rules/tests    # 11 unit tests for the rule engine
+python3 -m pytest backend/app/rules/tests    # 15 unit tests for the rule engine (including optimization benchmarks)
 ```
 
 ---

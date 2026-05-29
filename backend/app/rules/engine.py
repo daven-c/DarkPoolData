@@ -1,16 +1,18 @@
 """RuleEngine — drives state + rule evaluation for both live and backtest paths.
 
-`process(event)` updates the per-symbol `TickerState`, evaluates every active rule,
-applies a per-(rule, symbol) cooldown, and returns the `Signal`s that fired.
-The same engine instance backs the live dashboard snapshot and SSE fan-out.
+Uses eager metric caching and indexed evaluation trees to scale to thousands
+of user conditions under high-frequency market streaming feeds.
 """
 
 import asyncio
 import threading
-from typing import AsyncIterator, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 from backend.app.rules.events import MarketEvent, TickerState
 from backend.app.rules.rule import Rule, Signal
+from backend.app.rules.index import RuleIndex
+from backend.app.rules.evaluator import compile_evaluator
+from backend.app.rules.metrics import compute_metric
 
 
 class RuleEngine:
@@ -22,7 +24,6 @@ class RuleEngine:
         window_max_s: float = 300.0,
         sse_queue_max: int = 1_000,
     ):
-        self._rules: List[Rule] = list(rules or [])
         self._states: Dict[str, TickerState] = {}
         self._cooldowns: Dict[Tuple[str, str], float] = {}
         self._block_threshold = block_threshold
@@ -30,6 +31,14 @@ class RuleEngine:
         self._sse_queue_max = sse_queue_max
         self._lock = threading.Lock()
         self._subscribers: List[Tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
+
+        self._index = RuleIndex()
+        self._evaluators: Dict[str, Any] = {}
+        self._referenced_metrics: Set[Tuple[str, Any]] = set()
+        self._rules: List[Rule] = []
+
+        self.set_rules(rules or [])
+
         for sym in universe or []:
             self._states[sym] = self._new_state(sym)
 
@@ -50,6 +59,25 @@ class RuleEngine:
     def set_rules(self, rules: List[Rule]) -> None:
         with self._lock:
             self._rules = list(rules)
+            self._rebuild_index()
+
+    def _rebuild_index(self) -> None:
+        self._index.clear()
+        self._evaluators.clear()
+        self._referenced_metrics.clear()
+        for rule in self._rules:
+            if not rule.enabled:
+                continue
+            leaf_counter = [0]
+            eval_root = compile_evaluator(
+                rule._compiled,
+                rule.id,
+                leaf_counter,
+                self._index,
+                self._referenced_metrics
+            )
+            self._evaluators[rule.id] = eval_root
+        self._index.rebuild()
 
     def rules(self) -> List[Rule]:
         return list(self._rules)
@@ -63,16 +91,39 @@ class RuleEngine:
         with self._lock:
             st.update(event)
             fired: List[Signal] = []
+
+            # 1. Eagerly evaluate only the metrics referenced by active rules
+            satisfied_leaves: Set[str] = set()
+            computed_metrics: Dict[Tuple[str, Any], Any] = {}
+            for metric_name, window_s in self._referenced_metrics:
+                params = {"window_s": window_s} if window_s is not None else {}
+                try:
+                    val = compute_metric(metric_name, event, st, **params)
+                    computed_metrics[(metric_name, window_s)] = val
+                except Exception:
+                    computed_metrics[(metric_name, window_s)] = None
+
+            # 2. Get satisfied leaf condition IDs from index
+            for (metric_name, window_s), val in computed_metrics.items():
+                satisfied_leaves.update(self._index.match(metric_name, window_s, val))
+
+            # 3. Propagate and check each active rule's evaluator
             for rule in self._rules:
                 if not rule.enabled:
                     continue
-                if rule.matches(event, st):
+                evaluator = self._evaluators.get(rule.id)
+                if evaluator is None:
+                    continue
+
+                if evaluator.evaluate(satisfied_leaves):
                     key = (rule.id, event.symbol)
                     last = self._cooldowns.get(key)
                     if last is None or (event.ts - last) >= rule.cooldown_s:
                         self._cooldowns[key] = event.ts
                         fired.append(rule.make_signal(event, st))
+
             row = st.dashboard_row()
+
         if row is not None:
             self._notify(row)
         return fired
@@ -135,3 +186,4 @@ class RuleEngine:
                 except Exception:
                     continue
         return matches
+
