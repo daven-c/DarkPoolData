@@ -172,6 +172,106 @@ class AlertStore:
             )
         return cur.rowcount
 
+    @staticmethod
+    def _start_of_day_ts() -> float:
+        """Epoch seconds for 00:00:00 UTC of the current day."""
+        now = datetime.now(tz=timezone.utc)
+        sod = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return sod.timestamp()
+
+    def rule_stats(self, since_ts: Optional[float] = None) -> List[dict]:
+        """Per-rule aggregate stats over the alerts table.
+
+        One row per (rule_id, rule_name) seen in the table. For each rule:
+        signal_count, signals_today, last_ts, and for each forward horizon
+        column the number of stamped rows, hit-rate (% of positive returns)
+        and average return.
+
+        Only rows with a plausible timestamp (>= _MIN_VALID_TS) are counted so
+        test/dev artefacts never skew the numbers. `since_ts` optionally
+        narrows the window further (e.g. trailing 30 days).
+        """
+        sod = self._start_of_day_ts()
+        clauses = ["ts >= ?"]
+        params: list = [self._MIN_VALID_TS]
+        if since_ts is not None:
+            clauses.append("ts >= ?")
+            params.append(since_ts)
+        where = f"WHERE {' AND '.join(clauses)}"
+
+        # signals_today uses a fixed bind param (start-of-day) before the WHERE params.
+        sql = f"""
+            SELECT
+                rule_id,
+                rule_name,
+                COUNT(*)                                        AS signal_count,
+                SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END)        AS signals_today,
+                MAX(ts)                                         AS last_ts,
+
+                COUNT(forward_5m)                               AS stamped_5m,
+                SUM(CASE WHEN forward_5m > 0 THEN 1 ELSE 0 END) AS hits_5m,
+                AVG(forward_5m)                                 AS avg_5m,
+
+                COUNT(forward_30m)                              AS stamped_30m,
+                SUM(CASE WHEN forward_30m > 0 THEN 1 ELSE 0 END) AS hits_30m,
+                AVG(forward_30m)                                AS avg_30m,
+
+                COUNT(forward_1d)                               AS stamped_1d,
+                SUM(CASE WHEN forward_1d > 0 THEN 1 ELSE 0 END) AS hits_1d,
+                AVG(forward_1d)                                 AS avg_1d
+            FROM alerts
+            {where}
+            GROUP BY rule_id, rule_name
+            ORDER BY signal_count DESC
+        """
+        with self._connect() as conn:
+            rows = conn.execute(sql, (sod, *params)).fetchall()
+
+        def _horizon(stamped, hits, avg) -> dict:
+            stamped = stamped or 0
+            return {
+                "stamped": stamped,
+                "hit_rate": (hits / stamped * 100.0) if stamped else None,
+                "avg_return": avg,
+            }
+
+        out = []
+        for r in rows:
+            out.append(
+                {
+                    "rule_id": r["rule_id"],
+                    "rule_name": r["rule_name"],
+                    "signal_count": r["signal_count"] or 0,
+                    "signals_today": r["signals_today"] or 0,
+                    "last_ts": r["last_ts"],
+                    "horizons": {
+                        "5m": _horizon(r["stamped_5m"], r["hits_5m"], r["avg_5m"]),
+                        "30m": _horizon(r["stamped_30m"], r["hits_30m"], r["avg_30m"]),
+                        "1d": _horizon(r["stamped_1d"], r["hits_1d"], r["avg_1d"]),
+                    },
+                }
+            )
+        return out
+
+    def health(self) -> dict:
+        """Cheap aggregate counters for the engine-health strip."""
+        sod = self._start_of_day_ts()
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT
+                       COUNT(*)                                  AS total_signals,
+                       SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END)  AS signals_today,
+                       MAX(ts)                                   AS last_signal_ts
+                   FROM alerts
+                   WHERE ts >= ?""",
+                (sod, self._MIN_VALID_TS),
+            ).fetchone()
+        return {
+            "total_signals": row["total_signals"] or 0,
+            "signals_today": row["signals_today"] or 0,
+            "last_signal_ts": row["last_signal_ts"],
+        }
+
     def stamp_horizon(self, alert_id: str, horizon_col: str, return_pct: float) -> None:
         valid = {"forward_5m", "forward_30m", "forward_1d"}
         if horizon_col not in valid:

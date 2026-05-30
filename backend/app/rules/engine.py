@@ -6,6 +6,7 @@ of user conditions under high-frequency market streaming feeds.
 
 import asyncio
 import threading
+import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 from backend.app.rules.events import MarketEvent, TickerState
@@ -13,6 +14,50 @@ from backend.app.rules.rule import Rule, Signal
 from backend.app.rules.index import RuleIndex
 from backend.app.rules.evaluator import compile_evaluator
 from backend.app.rules.metrics import compute_metric
+
+
+class IngestionStats:
+    """Thread-safe rolling throughput counter for ingested market events.
+
+    Buckets event counts into 1-second slots and prunes anything older than
+    `window_s`, so live trades-per-second / per-minute can be read cheaply
+    from the async API thread while the WS daemon thread records events.
+    """
+
+    def __init__(self, window_s: int = 60):
+        self._lock = threading.Lock()
+        self._buckets: Dict[int, int] = {}
+        self._window_s = window_s
+        self._last_sec = 0
+        self.total = 0
+        self.last_event_ts: Optional[float] = None
+
+    def record(self, n: int = 1) -> None:
+        t = time.time()
+        sec = int(t)
+        with self._lock:
+            self.total += n
+            self.last_event_ts = t
+            self._buckets[sec] = self._buckets.get(sec, 0) + n
+            # Prune at most once per second when the clock rolls over.
+            if sec != self._last_sec:
+                self._last_sec = sec
+                cutoff = sec - self._window_s
+                for k in [k for k in self._buckets if k < cutoff]:
+                    del self._buckets[k]
+
+    def _count(self, window_s: int) -> int:
+        cutoff = int(time.time()) - window_s
+        with self._lock:
+            return sum(c for s, c in self._buckets.items() if s > cutoff)
+
+    def snapshot(self) -> dict:
+        return {
+            "total_events": self.total,
+            "events_per_sec": round(self._count(5) / 5.0, 1),
+            "events_per_min": self._count(60),
+            "last_event_ts": self.last_event_ts,
+        }
 
 
 class RuleEngine:
@@ -36,6 +81,7 @@ class RuleEngine:
         self._evaluators: Dict[str, Any] = {}
         self._referenced_metrics: Set[Tuple[str, Any]] = set()
         self._rules: List[Rule] = []
+        self.ingest = IngestionStats()
 
         self.set_rules(rules or [])
 
@@ -86,6 +132,7 @@ class RuleEngine:
         self.state(symbol).prior_day_total = total
 
     def process(self, event: MarketEvent) -> List[Signal]:
+        self.ingest.record()
         st = self.state(event.symbol)
         row: Optional[dict] = None
         with self._lock:
@@ -134,6 +181,10 @@ class RuleEngine:
 
     def universe(self) -> List[str]:
         return sorted(self._states.keys())
+
+    def ingestion_stats(self) -> dict:
+        """Live ingestion throughput: total events, trades/sec, trades/min, last event ts."""
+        return self.ingest.snapshot()
 
     # ------------------------------------------------------------------
     # SSE fan-out (mirrors DashboardAggregator.subscribe pattern)

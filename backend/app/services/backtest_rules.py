@@ -1,11 +1,15 @@
-"""Rule-based backtesting engine.
+"""Rule-based backtesting / signal-validation engine.
 
-Replays historical TRF trades through a fresh RuleEngine — same engine used
-live — and produces:
+Replays historical TRF trades through a fresh RuleEngine — the same engine used
+live — and answers one question: **did the signal predict the move?**
+
+It produces:
 1. Signal log (which rules fired, when, at what price)
 2. Forward-return stats: hit rate + avg/median returns at +5m/+30m/+1d
-3. Portfolio P&L via backtester.Portfolio (first time it's actually wired)
-4. Equity curve for charting
+3. A downsampled price series per symbol so the UI can mark each signal on the
+   price graph.
+
+No portfolio simulation — this is a signal-quality tool, not a P&L simulator.
 
 The `run_rule_backtest` function is synchronous; the API endpoint wraps it
 in `asyncio.to_thread` so it doesn't block the event loop.
@@ -20,7 +24,6 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from backtester.data import APIDataProvider, MockDataProvider
-from backtester.portfolio import Portfolio
 from backend.app.core.config import settings
 from backend.app.rules.engine import RuleEngine
 from backend.app.rules.events import MarketEvent
@@ -33,9 +36,26 @@ _HORIZONS = [
     ("1d",   1  * 24 * 3600),
 ]
 
+# Max points per symbol in the returned price series (the raw tape can be huge;
+# the chart only needs enough points to draw a recognizable price path).
+_MAX_PRICE_POINTS = 800
+
 
 def _epoch_s(ts: pd.Timestamp) -> float:
     return ts.timestamp()
+
+
+def _downsample(points: List[dict], max_points: int) -> List[dict]:
+    """Evenly thin a time-ordered point list down to <= max_points."""
+    n = len(points)
+    if n <= max_points:
+        return points
+    step = n / max_points
+    out = [points[int(i * step)] for i in range(max_points)]
+    # Always keep the final point so the line reaches the end of the window.
+    if out[-1] is not points[-1]:
+        out.append(points[-1])
+    return out
 
 
 def run_rule_backtest(
@@ -44,23 +64,19 @@ def run_rule_backtest(
     end_date: str,
     rules: List[Rule],
     api_key: Optional[str] = None,
-    notional_per_signal: float = 10_000.0,
-    exit_after_min: float = 30.0,
 ) -> Dict[str, Any]:
     """
     Parameters
     ----------
-    symbols           : tickers to replay (max 5 recommended — each fetches all trades)
-    start_date        : YYYY-MM-DD
-    end_date          : YYYY-MM-DD
-    rules             : Rule objects to evaluate (use store.as_rules() for platform rules)
-    api_key           : Massive API key; falls back to settings then MockDataProvider
-    notional_per_signal: fixed dollar size per BUY order
-    exit_after_min    : close position after this many minutes (time-based exit)
+    symbols    : tickers to replay (max 5 recommended — each fetches all trades)
+    start_date : YYYY-MM-DD
+    end_date   : YYYY-MM-DD
+    rules      : Rule objects to evaluate (use store.as_rules() for platform rules)
+    api_key    : Massive API key; falls back to settings then MockDataProvider
 
     Returns
     -------
-    {signals, forward_return_stats, equity_curve, portfolio_metrics}
+    {signals, signal_count, forward_return_stats, price_series}
     """
     key = api_key or settings.MASSIVE_API_KEY
     if key:
@@ -85,16 +101,9 @@ def run_rule_backtest(
     # pending[unique_key] = {'signal': sig, 'entry_ts': float, 'horizons': {label: price|None}}
     pending: Dict[str, dict] = {}
 
-    # Portfolio — using fixed notional sizing, time-based exit
-    # Initial cash = enough to fund all potential signals (overestimate is fine)
-    initial_cash = notional_per_signal * max(len(symbols) * 20, 100)
-    portfolio = Portfolio(initial_cash=initial_cash)
-    current_prices: Dict[str, float] = {}
+    # Full (lit + dark) price path per symbol, for charting + signal markers.
+    price_points: Dict[str, List[dict]] = defaultdict(list)
 
-    # open_exits[symbol] = {'exit_ts': float, 'qty': float}
-    open_exits: Dict[str, dict] = {}
-
-    equity_curve: List[dict] = []
     _sig_counter = [0]  # mutable counter for unique keys
 
     for batch in provider.get_data():
@@ -102,10 +111,13 @@ def run_rule_backtest(
         ts_epoch = _epoch_s(ts)
 
         for symbol, price in batch["prices"].items():
-            current_prices[symbol] = float(price)
+            price_f = float(price)
             indicators = batch.get("indicators", {}).get(symbol, {})
             size = int(indicators.get("size", 0))
             is_dark_pool = bool(indicators.get("is_dark_pool", False))
+
+            # Record the price path (every trade, lit or dark).
+            price_points[symbol].append({"t": ts_epoch, "price": price_f})
 
             # ---- resolve pending forward-return horizons ----------------
             for key_s, pend in list(pending.items()):
@@ -114,15 +126,7 @@ def run_rule_backtest(
                 for label, h_secs in _HORIZONS:
                     if pend["horizons"].get(label) is None:
                         if ts_epoch >= pend["entry_ts"] + h_secs:
-                            pend["horizons"][label] = float(price)
-
-            # ---- portfolio time-exits -----------------------------------
-            ex = open_exits.get(symbol)
-            if ex and ts_epoch >= ex["exit_ts"] and ex["qty"] > 0:
-                portfolio.sell(symbol, ex["qty"], float(price), ts)
-                del open_exits[symbol]
-                portfolio.update_equity(ts, current_prices)
-                equity_curve.append({"timestamp": ts.isoformat(), "total_value": portfolio.equity_history[-1]["total_value"]})
+                            pend["horizons"][label] = price_f
 
             # ---- only feed TRF (dark-pool) trades to engine -------------
             if not is_dark_pool or size <= 0:
@@ -131,7 +135,7 @@ def run_rule_backtest(
             event = MarketEvent(
                 symbol=symbol,
                 ts=ts_epoch,
-                price=float(price),
+                price=price_f,
                 size=size,
                 exchange=4,
                 is_dark_pool=True,
@@ -150,38 +154,6 @@ def run_rule_backtest(
                     "entry_price": sig.price,
                     "horizons": {label: None for label, _ in _HORIZONS},
                 }
-
-                # Portfolio: BUY on bull (or neutral) signals
-                if sig.side_label != "bear" and symbol not in open_exits:
-                    qty = notional_per_signal / sig.price if sig.price > 0 else 0.0
-                    if qty > 0:
-                        ok = portfolio.buy(symbol, qty, float(sig.price), ts)
-                        if ok:
-                            open_exits[symbol] = {
-                                "exit_ts": ts_epoch + exit_after_min * 60,
-                                "qty": qty,
-                            }
-                            portfolio.update_equity(ts, current_prices)
-                            equity_curve.append({"timestamp": ts.isoformat(), "total_value": portfolio.equity_history[-1]["total_value"]})
-
-                # Portfolio: SELL on bear signals
-                elif sig.side_label == "bear" and symbol in open_exits:
-                    ex2 = open_exits.pop(symbol)
-                    if ex2["qty"] > 0:
-                        portfolio.sell(symbol, ex2["qty"], float(sig.price), ts)
-                        portfolio.update_equity(ts, current_prices)
-                        equity_curve.append({"timestamp": ts.isoformat(), "total_value": portfolio.equity_history[-1]["total_value"]})
-
-    # ---- close any remaining open positions at last known price ---------
-    final_ts = pd.Timestamp("now", tz="UTC")
-    for symbol, ex in open_exits.items():
-        price = current_prices.get(symbol)
-        if price and ex["qty"] > 0:
-            portfolio.sell(symbol, ex["qty"], float(price), final_ts)
-    if current_prices:
-        portfolio.update_equity(final_ts, current_prices)
-        if portfolio.equity_history:
-            equity_curve.append({"timestamp": final_ts.isoformat(), "total_value": portfolio.equity_history[-1]["total_value"]})
 
     # ---- forward-return stats -------------------------------------------
     fwd_stats = _compute_forward_stats(all_signals, pending)
@@ -202,17 +174,11 @@ def run_rule_backtest(
         for s in all_signals
     ]
 
-    portfolio_metrics: Dict[str, Any] = {}
-    try:
-        portfolio_metrics = portfolio.get_metrics()
-        # Convert non-serializable types
-        for k, v in list(portfolio_metrics.items()):
-            if hasattr(v, "item"):
-                portfolio_metrics[k] = v.item()
-            elif isinstance(v, dict):
-                portfolio_metrics[k] = v  # positions dict
-    except Exception as exc:
-        portfolio_metrics = {"error": str(exc)}
+    # ---- downsampled price series per symbol ----------------------------
+    price_series = {
+        sym: _downsample(pts, _MAX_PRICE_POINTS)
+        for sym, pts in price_points.items()
+    }
 
     return {
         "symbols": symbols,
@@ -221,8 +187,7 @@ def run_rule_backtest(
         "signal_count": len(all_signals),
         "signals": sig_list,
         "forward_return_stats": fwd_stats,
-        "equity_curve": equity_curve,
-        "portfolio_metrics": portfolio_metrics,
+        "price_series": price_series,
     }
 
 

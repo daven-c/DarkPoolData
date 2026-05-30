@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
 
     # Dashboard — universe & data source
-    DASHBOARD_UNIVERSE_SIZE: int = 100            # Top-N tickers ranked by prior-day $ volume
+    DASHBOARD_UNIVERSE_SIZE: int = 1000           # Top-N tickers by prior-day $ volume. Bigger = catches quieter names institutions accumulate. Env-tunable (1000-3000); ceiling is your Massive WS per-symbol subscription cap. Prior-day seeding cost scales linearly (background, non-blocking).
     DASHBOARD_SEED_PRIOR_DAY: bool = True         # Backfill prior-day TRF totals on startup
     DASHBOARD_WS_FEED: str = "delayed"            # "realtime" or "delayed" (must match your Massive plan)
 

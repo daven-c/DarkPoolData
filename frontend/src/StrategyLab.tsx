@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Eye, FlaskConical, Plus, Save, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { BarChart3, Eye, FlaskConical, Plus, Save, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import RuleBacktest from "./RuleBacktest";
 
 const API_BASE = "http://localhost:8000/api/v1";
 
@@ -71,6 +72,10 @@ export default function StrategyLab() {
   // Save state
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+
+  // Lab sub-view: author rules ("builder") vs. backtest them ("backtest")
+  const [labView, setLabView] = useState<"builder" | "backtest">("builder");
+  const [backtestRuleId, setBacktestRuleId] = useState<string | undefined>(undefined);
 
   const loadAll = useCallback(() => {
     setLoading(true);
@@ -244,11 +249,26 @@ export default function StrategyLab() {
         <div>
           <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Strategy Lab</h3>
           <span style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))" }}>
-            Admin rule management — rules here drive the live signal engine
+            Author rules and backtest them — rules here drive the live signal engine
           </span>
+        </div>
+        <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+          {(["builder", "backtest"] as const).map(v => (
+            <button key={v}
+              className={`tab-btn ${labView === v ? "active" : ""}`}
+              onClick={() => { if (v === "builder") setBacktestRuleId(undefined); setLabView(v); }}
+            >
+              {v === "builder"
+                ? <><FlaskConical size={13} style={{ marginRight: 5, verticalAlign: "middle" }} />Builder</>
+                : <><BarChart3 size={13} style={{ marginRight: 5, verticalAlign: "middle" }} />Backtest</>}
+            </button>
+          ))}
         </div>
       </div>
 
+      {labView === "backtest" ? (
+        <RuleBacktest initialRuleId={backtestRuleId} />
+      ) : (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 20, alignItems: "start" }}>
 
         {/* Rules list */}
@@ -290,6 +310,13 @@ export default function StrategyLab() {
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <button
+                      title="Backtest this rule"
+                      onClick={e => { e.stopPropagation(); setBacktestRuleId(r.id); setLabView("backtest"); }}
+                      style={{ background: "transparent", border: "none", cursor: "pointer", color: "#a78bfa", opacity: 0.8, display: "flex" }}
+                    >
+                      <BarChart3 size={15} />
+                    </button>
                     <button
                       title={r.enabled ? "Disable" : "Enable"}
                       onClick={e => { e.stopPropagation(); toggleEnabled(r); }}
@@ -524,6 +551,7 @@ export default function StrategyLab() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

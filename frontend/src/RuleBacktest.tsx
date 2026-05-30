@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, BarChart3, Play } from "lucide-react";
 import {
   CartesianGrid,
+  ComposedChart,
   Line,
-  LineChart,
   ResponsiveContainer,
+  Scatter,
   Tooltip,
   XAxis,
   YAxis,
@@ -22,17 +23,26 @@ type HorizonStat = {
   worst_pct: number;
 } | null;
 type FwdStats = Record<string, { signal_count: number; "5m": HorizonStat; "30m": HorizonStat; "1d": HorizonStat }>;
-type EquityPoint = { timestamp: string; total_value: number };
-type PortfolioMetrics = { total_return?: number; sharpe_ratio?: number; max_drawdown?: number; total_trades?: number; buy_trades?: number; sell_trades?: number; initial_cash?: number; final_value?: number };
+type PricePoint = { t: number; price: number };
+type PriceSeries = Record<string, PricePoint[]>;
+type SignalRow = {
+  rule_name: string;
+  symbol: string;
+  ts: number;
+  severity: string;
+  side_label: string | null;
+  price: number;
+};
 
-function fmtPct(v: number | undefined): string {
-  if (v === undefined || v === null) return "—";
-  return `${(v * 100).toFixed(2)}%`;
-}
 function fmtReturn(v: number | undefined): React.ReactNode {
   if (v === undefined || v === null) return <span style={{ color: "hsl(var(--text-muted))" }}>—</span>;
   const pos = v >= 0;
   return <span style={{ color: pos ? "#10b981" : "#ef4444" }}>{pos ? "+" : ""}{v.toFixed(2)}%</span>;
+}
+function fmtClock(t: number): string {
+  try {
+    return new Date(t * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch { return String(t); }
 }
 
 function StatCell({ s }: { s: HorizonStat }) {
@@ -51,14 +61,63 @@ function StatCell({ s }: { s: HorizonStat }) {
   );
 }
 
-export default function RuleBacktest() {
+/** Price line + signal markers for one symbol. */
+function SignalChart({ symbol, prices, signals }: { symbol: string; prices: PricePoint[]; signals: SignalRow[] }) {
+  if (prices.length < 2) return null;
+  const bull = signals.filter((s) => s.side_label !== "bear").map((s) => ({ t: s.ts, price: s.price }));
+  const bear = signals.filter((s) => s.side_label === "bear").map((s) => ({ t: s.ts, price: s.price }));
+  const domain = [prices[0].t, prices[prices.length - 1].t];
+
+  return (
+    <div className="glass-panel" style={{ padding: 20, minHeight: 300 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <h4 style={{ fontSize: "0.9rem", fontWeight: 700 }}>{symbol} — price &amp; signals</h4>
+        <div style={{ display: "flex", gap: 14, fontSize: "0.72rem", color: "hsl(var(--text-muted))" }}>
+          <span><span style={{ color: "#10b981" }}>●</span> bull/neutral</span>
+          <span><span style={{ color: "#ef4444" }}>●</span> bear</span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={240}>
+        <ComposedChart>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+          <XAxis
+            type="number"
+            dataKey="t"
+            domain={domain}
+            scale="time"
+            tickFormatter={(t) => { try { return new Date(t * 1000).toLocaleDateString([], { month: "short", day: "numeric" }); } catch { return String(t); } }}
+            stroke="hsl(var(--text-muted))"
+            fontSize={10}
+            tick={{ fill: "hsl(var(--text-muted))" }}
+          />
+          <YAxis
+            dataKey="price"
+            domain={["auto", "auto"]}
+            stroke="#a78bfa"
+            fontSize={10}
+            tickFormatter={(v) => `$${Number(v).toFixed(0)}`}
+            tick={{ fill: "hsl(var(--text-muted))" }}
+          />
+          <Tooltip
+            contentStyle={{ backgroundColor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: "0.82rem" }}
+            formatter={(v: any) => [`$${Number(v).toFixed(2)}`, "Price"]}
+            labelFormatter={(t: any) => fmtClock(Number(t))}
+          />
+          <Line data={prices} type="monotone" dataKey="price" stroke="#8b5cf6" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Scatter data={bull} dataKey="price" fill="#10b981" isAnimationActive={false} />
+          <Scatter data={bear} dataKey="price" fill="#ef4444" isAnimationActive={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export default function RuleBacktest({ initialRuleId }: { initialRuleId?: string } = {}) {
   const [allRules, setAllRules] = useState<RuleRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [symbols, setSymbols] = useState("AAPL");
   const [startDate, setStartDate] = useState("2026-01-02");
   const [endDate, setEndDate] = useState("2026-05-23");
-  const [notional, setNotional] = useState(10000);
-  const [exitMin, setExitMin] = useState(30);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<any>(null);
@@ -67,9 +126,15 @@ export default function RuleBacktest() {
     fetch(`${API_BASE}/rules`).then(r => r.json()).then(d => {
       const rules: RuleRow[] = d.rules ?? [];
       setAllRules(rules);
-      setSelectedIds(new Set(rules.filter(r => r.enabled).map(r => r.id)));
+      // When launched from Strategy Lab against a specific rule, preselect just
+      // that rule; otherwise default to every enabled rule.
+      if (initialRuleId && rules.some(r => r.id === initialRuleId)) {
+        setSelectedIds(new Set([initialRuleId]));
+      } else {
+        setSelectedIds(new Set(rules.filter(r => r.enabled).map(r => r.id)));
+      }
     });
-  }, []);
+  }, [initialRuleId]);
 
   function toggleRule(id: string) {
     setSelectedIds(prev => {
@@ -89,8 +154,6 @@ export default function RuleBacktest() {
       start_date: startDate,
       end_date: endDate,
       rule_ids: selectedIds.size > 0 ? [...selectedIds] : undefined,
-      notional_per_signal: notional,
-      exit_after_min: exitMin,
     };
     try {
       const r = await fetch(`${API_BASE}/backtest/rules`, {
@@ -108,9 +171,9 @@ export default function RuleBacktest() {
     }
   }
 
-  const pm: PortfolioMetrics = result?.portfolio_metrics ?? {};
   const fwd: FwdStats = result?.forward_return_stats ?? {};
-  const equity: EquityPoint[] = result?.equity_curve ?? [];
+  const priceSeries: PriceSeries = result?.price_series ?? {};
+  const signals: SignalRow[] = result?.signals ?? [];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -121,7 +184,7 @@ export default function RuleBacktest() {
         <div>
           <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Rule Backtest</h3>
           <span style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))" }}>
-            Replay historical TRF trades through the signal engine — forward returns + Portfolio P&L
+            Replay historical TRF trades through the signal engine — does the signal predict the move?
           </span>
         </div>
       </div>
@@ -143,16 +206,6 @@ export default function RuleBacktest() {
               <div>
                 <label style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))", display: "block", marginBottom: 4 }}>End Date</label>
                 <input className="input-field" style={{ width: "100%" }} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required />
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <label style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))", display: "block", marginBottom: 4 }}>$ per signal</label>
-                <input className="input-field" style={{ width: "100%" }} type="number" min={100} value={notional} onChange={e => setNotional(Number(e.target.value))} />
-              </div>
-              <div>
-                <label style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))", display: "block", marginBottom: 4 }}>Exit after (min)</label>
-                <input className="input-field" style={{ width: "100%" }} type="number" min={1} value={exitMin} onChange={e => setExitMin(Number(e.target.value))} />
               </div>
             </div>
 
@@ -198,20 +251,17 @@ export default function RuleBacktest() {
 
           {result && !loading && (
             <>
-              {/* Portfolio metric cards */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-                {[
-                  { label: "Total Return", value: fmtPct(pm.total_return), color: (pm.total_return ?? 0) >= 0 ? "#10b981" : "#ef4444" },
-                  { label: "Sharpe Ratio", value: pm.sharpe_ratio?.toFixed(2) ?? "—", color: "#a78bfa" },
-                  { label: "Max Drawdown", value: fmtPct(pm.max_drawdown), color: "#f87171" },
-                  { label: "Signals Fired", value: result.signal_count, color: "#60a5fa" },
-                ].map(c => (
-                  <div key={c.label} className="glass-panel" style={{ padding: "14px 16px" }}>
-                    <div style={{ fontSize: "0.72rem", color: "hsl(var(--text-muted))" }}>{c.label}</div>
-                    <div style={{ fontSize: "1.35rem", fontWeight: 700, color: c.color, fontFamily: "var(--font-display)", marginTop: 4 }}>{c.value}</div>
-                  </div>
-                ))}
+              {/* Signal count */}
+              <div className="glass-panel" style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 12 }}>
+                <BarChart3 size={18} color="#60a5fa" />
+                <span style={{ fontSize: "0.85rem", color: "hsl(var(--text-muted))" }}>Signals fired</span>
+                <span style={{ fontSize: "1.25rem", fontWeight: 700, fontFamily: "var(--font-display)", color: "#60a5fa" }}>{result.signal_count}</span>
               </div>
+
+              {/* Price + signal-marker charts (one per symbol) */}
+              {Object.entries(priceSeries).map(([sym, pts]) => (
+                <SignalChart key={sym} symbol={sym} prices={pts} signals={signals.filter((s) => s.symbol === sym)} />
+              ))}
 
               {/* Forward-return stats table */}
               {Object.keys(fwd).length > 0 && (
@@ -250,42 +300,11 @@ export default function RuleBacktest() {
                 </div>
               )}
 
-              {/* Equity curve */}
-              {equity.length > 1 && (
-                <div className="glass-panel" style={{ padding: 20, minHeight: 280 }}>
-                  <h4 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: 14 }}>Portfolio Equity Curve</h4>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={equity}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                      <XAxis
-                        dataKey="timestamp"
-                        tickFormatter={s => { try { return new Date(s).toLocaleDateString([], { month: "short", day: "numeric" }); } catch { return s; } }}
-                        stroke="hsl(var(--text-muted))"
-                        fontSize={10}
-                        tick={{ fill: "hsl(var(--text-muted))" }}
-                      />
-                      <YAxis
-                        stroke="#a78bfa"
-                        fontSize={10}
-                        tickFormatter={v => `$${(v / 1000).toFixed(0)}k`}
-                        tick={{ fill: "hsl(var(--text-muted))" }}
-                      />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: "0.82rem" }}
-                        formatter={(v: any) => [`$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, "Portfolio Value"]}
-                        labelFormatter={s => { try { return new Date(s).toLocaleString(); } catch { return s; } }}
-                      />
-                      <Line type="monotone" dataKey="total_value" stroke="#8b5cf6" strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-
               {/* Signal log (collapsible) */}
-              {result.signals?.length > 0 && (
+              {signals.length > 0 && (
                 <details className="glass-panel" style={{ padding: 20 }}>
                   <summary style={{ cursor: "pointer", fontSize: "0.9rem", fontWeight: 700, listStyle: "none", display: "flex", alignItems: "center", gap: 8 }}>
-                    <span>Signal Log ({result.signals.length} signals)</span>
+                    <span>Signal Log ({signals.length} signals)</span>
                   </summary>
                   <div style={{ marginTop: 14, maxHeight: 260, overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
@@ -298,11 +317,9 @@ export default function RuleBacktest() {
                         </tr>
                       </thead>
                       <tbody>
-                        {result.signals.map((s: any, i: number) => (
+                        {signals.map((s, i) => (
                           <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.02)" }}>
-                            <td style={{ padding: "6px 8px", color: "hsl(var(--text-muted))" }}>
-                              {new Date(s.ts * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                            </td>
+                            <td style={{ padding: "6px 8px", color: "hsl(var(--text-muted))" }}>{fmtClock(s.ts)}</td>
                             <td style={{ padding: "6px 8px", fontWeight: 600 }}>{s.symbol}</td>
                             <td style={{ padding: "6px 8px" }}>{s.rule_name}</td>
                             <td style={{ padding: "6px 8px" }}>${s.price.toFixed(2)}</td>
@@ -319,7 +336,7 @@ export default function RuleBacktest() {
           {!result && !loading && !error && (
             <div className="glass-panel" style={{ padding: 48, textAlign: "center", color: "hsl(var(--text-muted))" }}>
               <BarChart3 size={36} style={{ marginBottom: 12, opacity: 0.3 }} />
-              <div style={{ fontSize: "0.9rem" }}>Configure the backtest and hit Run to see results.</div>
+              <div style={{ fontSize: "0.9rem" }}>Configure the backtest and hit Run to see signals marked on the price chart.</div>
             </div>
           )}
         </div>

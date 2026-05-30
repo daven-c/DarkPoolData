@@ -74,6 +74,42 @@ async def stream(request: Request):
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
+@router.get("/health")
+def get_health(request: Request):
+    """Compact engine-health summary for the Signals Dashboard strip.
+
+    Composed from cheap sources — no new engine counters:
+      - tickers_tracked: size of the active WS universe
+      - active_tickers:  universe rows that have logged at least one dark trade
+      - signals_today / last_signal_ts: from the alert store
+      - ws_feed: configured WS feed tier (delayed/realtime)
+    """
+    engine = request.app.state.engine
+    rows = _build_rows(request)
+    active = sum(1 for r in rows if (r.get("dp_trades") or 0) > 0)
+
+    health = {"signals_today": 0, "last_signal_ts": None, "total_signals": 0}
+    alert_store = getattr(request.app.state, "alert_store", None)
+    if alert_store is not None:
+        health = alert_store.health()
+
+    ingest = engine.ingestion_stats()
+
+    return {
+        "tickers_tracked": len(engine.universe()),
+        "active_tickers": active,
+        "signals_today": health["signals_today"],
+        "last_signal_ts": health["last_signal_ts"],
+        "total_signals": health["total_signals"],
+        "ws_feed": settings.DASHBOARD_WS_FEED,
+        # Live ingestion throughput
+        "events_per_sec": ingest["events_per_sec"],
+        "events_per_min": ingest["events_per_min"],
+        "total_events": ingest["total_events"],
+        "last_event_ts": ingest["last_event_ts"],
+    }
+
+
 @router.get("/universe")
 def get_universe(request: Request):
     engine = request.app.state.engine

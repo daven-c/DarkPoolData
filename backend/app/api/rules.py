@@ -85,6 +85,46 @@ def get_metrics():
     return {"metrics": catalog()}
 
 
+@router.get("/stats")
+def rule_stats(request: Request):
+    """Per-rule lifetime performance for the Signals Dashboard.
+
+    Merges every rule from the store (so rules with zero signals still
+    appear) with aggregate signal stats from the alert store, keyed by
+    rule_id. Each rule carries signal_count / signals_today / last_ts plus
+    +5m/+30m/+1d hit-rate + avg-return stats.
+    """
+    store = request.app.state.rules_store
+    alert_store = request.app.state.alert_store
+
+    stats_by_id = {s["rule_id"]: s for s in alert_store.rule_stats()}
+
+    def _empty_horizons() -> dict:
+        z = {"stamped": 0, "hit_rate": None, "avg_return": None}
+        return {"5m": dict(z), "30m": dict(z), "1d": dict(z)}
+
+    rules = []
+    for rule in store.all_rules():
+        st = stats_by_id.get(rule["id"])
+        rules.append(
+            {
+                "id": rule["id"],
+                "name": rule["name"],
+                "enabled": rule["enabled"],
+                "severity": rule["severity"],
+                "side_label": rule.get("side_label"),
+                "kind": rule.get("kind"),
+                "cooldown_s": rule["cooldown_s"],
+                "logic": rule.get("logic"),
+                "signal_count": st["signal_count"] if st else 0,
+                "signals_today": st["signals_today"] if st else 0,
+                "last_ts": st["last_ts"] if st else None,
+                "horizons": st["horizons"] if st else _empty_horizons(),
+            }
+        )
+    return {"rules": rules}
+
+
 @router.get("")
 def list_rules(request: Request):
     store = request.app.state.rules_store
