@@ -97,6 +97,9 @@ async def lifespan(app: FastAPI):
     # Alert pipeline — SSE + Discord + SQLite + forward-return stamper
     # -----------------------------------------------------------------------
     alert_store = AlertStore()
+    purged = alert_store.purge_invalid_timestamps()
+    if purged:
+        print(f"[alerts] purged {purged} row(s) with invalid timestamps (ts < 2020-01-01)", flush=True)
     dispatcher = AlertDispatcher(
         store=alert_store,
         discord=discord_notifier,

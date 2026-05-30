@@ -140,18 +140,37 @@ class AlertStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    # Earliest plausible signal timestamp: 2020-01-01 00:00:00 UTC.
+    # Rows with ts below this are test/dev artefacts with bogus epoch values (e.g. ts=0).
+    _MIN_VALID_TS: float = 1_577_836_800.0
+
     def get_unstamped(self, horizon_col: str, before_ts: float, limit: int = 200) -> List[dict]:
-        """Rows whose horizon has elapsed but hasn't been stamped yet."""
+        """Rows whose horizon has elapsed but hasn't been stamped yet.
+
+        Only returns rows with a plausible timestamp (>= 2020-01-01).  Rows
+        with ts=0 or other dev/test artefacts are silently excluded so the
+        stamper never requests data for 1970.
+        """
         valid = {"forward_5m", "forward_30m", "forward_1d"}
         if horizon_col not in valid:
             raise ValueError(f"invalid horizon_col: {horizon_col}")
         with self._connect() as conn:
             rows = conn.execute(
                 f"SELECT id, symbol, ts, price FROM alerts "
-                f"WHERE {horizon_col} IS NULL AND ts <= ? LIMIT ?",
-                (before_ts, limit),
+                f"WHERE {horizon_col} IS NULL AND ts >= ? AND ts <= ? LIMIT ?",
+                (self._MIN_VALID_TS, before_ts, limit),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def purge_invalid_timestamps(self) -> int:
+        """Delete rows whose ts is before _MIN_VALID_TS (test/dev artefacts).
+        Returns the number of rows deleted.
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM alerts WHERE ts < ?", (self._MIN_VALID_TS,)
+            )
+        return cur.rowcount
 
     def stamp_horizon(self, alert_id: str, horizon_col: str, return_pct: float) -> None:
         valid = {"forward_5m", "forward_30m", "forward_1d"}
