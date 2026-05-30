@@ -25,8 +25,7 @@ CREATE TABLE IF NOT EXISTS rules (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
     enabled     INTEGER NOT NULL DEFAULT 1,
-    severity    TEXT NOT NULL DEFAULT 'info',
-    side_label  TEXT,
+    side_label  TEXT,                          -- 'bull' | 'bear' | NULL (neutral)
     kind        TEXT NOT NULL DEFAULT 'SIGNAL',
     cooldown_s  REAL NOT NULL DEFAULT 300.0,
     logic_json  TEXT NOT NULL,
@@ -54,6 +53,14 @@ class RulesStore:
         os.makedirs(DB_DIR, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            self._migrate(conn)
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        """Drop the deprecated `severity` column from pre-existing DBs."""
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(rules)").fetchall()}
+        if "severity" in cols:
+            conn.execute("ALTER TABLE rules DROP COLUMN severity")
 
     @contextmanager
     def _connect(self):
@@ -96,14 +103,13 @@ class RulesStore:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO rules
-                   (id, name, enabled, severity, side_label, kind, cooldown_s,
+                   (id, name, enabled, side_label, kind, cooldown_s,
                     logic_json, is_builtin)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     rule.id,
                     rule.name,
                     int(rule.enabled),
-                    rule.severity,
                     rule.side_label,
                     rule.kind,
                     rule.cooldown_s,
@@ -115,7 +121,7 @@ class RulesStore:
 
     def update_rule(self, rule_id: str, updates: Dict[str, Any]) -> Optional[dict]:
         """Apply a partial update. Only whitelisted fields are accepted."""
-        allowed = {"name", "enabled", "severity", "side_label", "kind", "cooldown_s", "logic"}
+        allowed = {"name", "enabled", "side_label", "kind", "cooldown_s", "logic"}
         fields = {k: v for k, v in updates.items() if k in allowed}
         if not fields:
             return self.get_rule(rule_id)

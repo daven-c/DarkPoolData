@@ -55,7 +55,7 @@ This document plans the production deployment. **Nothing has been deployed yet**
 These changes are needed regardless of platform. None are made yet.
 
 ### 3.1 Frontend API base URL
-[frontend/src/TickerDashboard.tsx:4](frontend/src/TickerDashboard.tsx:4) and [frontend/src/App.tsx:26](frontend/src/App.tsx:26) both hardcode `http://localhost:8000/api/v1`. Replace with:
+Every data-fetching component (`SignalsDashboard.tsx`, `AlertsFeed.tsx`, `StrategyLab.tsx`, `RuleBacktest.tsx`, `StockExplorer.tsx`) and [frontend/src/App.tsx](frontend/src/App.tsx) hardcode `http://localhost:8000/api/v1` as a local `API_BASE` constant. Replace each with:
 
 ```ts
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api/v1";

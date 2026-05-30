@@ -42,9 +42,6 @@ class Settings(BaseSettings):
     ALERTS_DISCORD_ENABLED: bool = True           # Set False to silence Discord without removing wiring
     ALERTS_RECENT_LIMIT: int = 100                # Max rows returned by /alerts/recent
 
-    # Backtesting
-    BACKTEST_DEFAULT_NOTIONAL: float = 10_000.0   # Default per-signal position size for P&L backtest
-
     class Config:
         env_file = (".env", "backend/.env", "../.env")
         extra = "ignore"

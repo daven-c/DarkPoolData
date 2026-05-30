@@ -2,7 +2,7 @@
 
 An institutional-grade platform to ingest, explore, backtest, and alert on off-exchange (dark pool/TRF) trade data using the **Massive.com** (formerly Polygon.io) market data APIs.
 
-**Current design (v2 — Managed Signals):** a central `RuleEngine` evaluates composable condition trees against every incoming TRF trade. When a rule fires it broadcasts a `Signal` to an in-app SSE feed, a Discord channel, and a SQLite history table. Each persisted alert is later stamped with +5m/+30m/+1d forward returns so signal quality is measurable. Admins compose and iterate rules in a Strategy Lab UI; rule-based backtests produce portfolio P&L alongside forward-return hit rates.
+**Current design (v2 — Managed Signals):** a central `RuleEngine` evaluates composable condition trees against every incoming TRF trade. When a rule fires it broadcasts a `Signal` to an in-app SSE feed, a Discord channel, and a SQLite history table. Each persisted alert is later stamped with +5m/+30m/+1d forward returns so signal quality is measurable. Admins compose and iterate rules in a Strategy Lab UI; rule-based backtests are a **signal validator** — they replay historical TRF trades through a fresh engine and answer "did the signal predict the move?" via forward-return hit rates and a price chart with bull/bear markers (no portfolio P&L simulation).
 
 ---
 
@@ -11,11 +11,11 @@ An institutional-grade platform to ingest, explore, backtest, and alert on off-e
 ```
 backend/app/
   api/
-    darkpool.py          # TRF trade details + aggregates (single-symbol scanner)
-    backtest.py          # POST /backtest/run (indicator viz) + POST /backtest/rules (rule P&L)
-    dashboard.py         # Livestream: snapshot + SSE stream + universe list
+    darkpool.py          # TRF trade details + aggregates (single-symbol explorer)
+    backtest.py          # POST /backtest/rules (signal validator: forward returns + price series)
+    dashboard.py         # Livestream: snapshot + SSE stream + universe + health strip
     alerts.py            # GET /alerts/stream (SSE) · /alerts/recent · /alerts/history
-    rules.py             # CRUD /rules · /rules/metrics · /rules/preview
+    rules.py             # CRUD /rules · /rules/metrics · /rules/stats · /rules/preview
   rules/
     events.py            # MarketEvent DTO · TickerState (tick-test, running totals, OHLC)
     metrics.py           # 12-metric catalog for condition builder
@@ -31,27 +31,26 @@ backend/app/
     stream.py            # Massive WebSocket → MarketEvent → RuleEngine
     alerts.py            # AlertStore (SQLite) · AlertDispatcher (SSE+Discord+DB) · stamper
     rules_store.py       # SQLite rules table · seed builtins · hot-reload helper
-    backtest_rules.py    # Historical trade replay → signals + forward returns + Portfolio P&L
+    backtest_rules.py    # Signal validator: historical replay → signals + forward returns + price series
+    alerts.py            # AlertStore (rule_stats/health) · AlertDispatcher (SSE+Discord+DB) · stamper
     dashboard_store.py   # SQLite cache for prior-day TRF totals (% change column)
+    ingestion_stats.py   # Thread-safe 1s-bucketed throughput counter (events/sec, total)
     discord.py           # Webhook broadcaster to bot receiver
   core/
     config.py            # pydantic-settings; reads .env; all tunable knobs
   main.py                # FastAPI app + lifespan (engine · dispatcher · streamer · stamper)
 
 frontend/src/
-  App.tsx                # 6-tab shell
-  TickerDashboard.tsx    # Livestreaming TRF table (SSE → sortable paginated table)
+  App.tsx                # 4-tab shell (Dashboard · Alerts · Strategy Lab · Stock Explorer)
+  SignalsDashboard.tsx   # Landing view: engine-health strip + per-rule stats + recent signals
   AlertsFeed.tsx         # Live signal feed (SSE) + history with forward-return columns
-  StrategyLab.tsx        # Admin rule builder: conditions, groups, preview, CRUD
-  RuleBacktest.tsx       # Rule backtest: portfolio cards + return stats + equity curve
+  StrategyLab.tsx        # Admin rule builder: conditions, groups, preview, CRUD + inline backtest
+  RuleBacktest.tsx       # Signal-validator panel: forward-return stats + price chart w/ markers
+  StockExplorer.tsx      # Single-symbol darkpool deep-dive + "rules fired on this symbol" history
   index.css              # Glassmorphic dark mode stylesheet
 
 backtester/
-  engine.py              # Chronological tick-by-tick simulation loop
-  portfolio.py           # Position management, trade logs, Sharpe/drawdown metrics
   data.py                # APIDataProvider · CSVDataProvider · MockDataProvider
-  strategy.py            # Abstract base Strategy
-  strategies.py          # DarkPoolSpikeStrategy, SMACrossStrategy
 
 bot/bot.py               # discord.py client + aiohttp webhook server (:5000 POST /alert)
 notebooks/               # Marimo notebooks for ad-hoc exploration
@@ -85,7 +84,9 @@ DISCORD_CHANNEL_ID=your_channel_id
 DISCORD_WEBHOOK_URL=http://localhost:5000/alert
 
 # Dashboard (defaults shown)
-DASHBOARD_UNIVERSE_SIZE=100          # Top-N tickers by prior-day DP dollar volume
+DASHBOARD_UNIVERSE_SIZE=1000         # Top-N tickers by prior-day DP dollar volume (1000-3000 typical;
+                                     #   ceiling = Massive WS per-symbol subscription cap; prior-day
+                                     #   seeding cost scales linearly, runs in a background thread)
 DASHBOARD_WS_FEED=delayed            # "realtime" or "delayed" (match your plan tier)
 DASHBOARD_SEED_PRIOR_DAY=True        # Backfill % change on boot
 
@@ -93,9 +94,6 @@ DASHBOARD_SEED_PRIOR_DAY=True        # Backfill % change on boot
 ALERTS_SSE_QUEUE_MAX=1000
 ALERTS_DEFAULT_COOLDOWN_S=300        # Per (rule, symbol) cooldown between signals
 ALERTS_FORWARD_HORIZONS_MIN=[5,30,1440]  # Horizons stamped on persisted alerts
-
-# Backtest (defaults shown)
-BACKTEST_DEFAULT_NOTIONAL=10000      # Notional per signal in rule backtest
 ```
 
 > **Delayed feed note**: if your Massive plan is delayed-only, set `DASHBOARD_WS_FEED=delayed`. Using `realtime` on a delayed-only key authenticates but receives no ticks.
@@ -147,10 +145,10 @@ marimo edit notebooks/darkpool_exploration.py
 | `GET` | `/dashboard/snapshot` | Live universe snapshot (sortable, paginated) |
 | `GET` | `/dashboard/stream` | SSE — per-trade `TickerState` deltas |
 | `GET` | `/dashboard/universe` | Active ticker list |
+| `GET` | `/dashboard/health` | Engine-health strip: tickers tracked/active, signals today, last-signal ts, feed tier |
 | `GET` | `/darkpool/summary` | Single-symbol TRF aggregates for a date |
 | `GET` | `/darkpool/trades` | Raw TRF tick log for a symbol/date |
-| `POST` | `/backtest/run` | Indicator-strategy backtest (equity curve + trade log) |
-| `POST` | `/backtest/rules` | Rule-based backtest → `{signals, forward_return_stats, equity_curve, portfolio_metrics}` |
+| `POST` | `/backtest/rules` | Signal-validator backtest → `{signals, signal_count, forward_return_stats, price_series}` |
 | `GET` | `/alerts/stream` | SSE — live `Signal` events as they fire |
 | `GET` | `/alerts/recent` | Most-recent N alerts (default 100) |
 | `GET` | `/alerts/history` | Historical alerts with `+5m/+30m/+1d` returns; `?symbol=&rule_name=&limit=` |
@@ -159,11 +157,15 @@ marimo edit notebooks/darkpool_exploration.py
 | `PATCH` | `/rules/{id}` | Partial-update rule + hot-reload engine |
 | `DELETE` | `/rules/{id}` | Delete rule + hot-reload engine |
 | `GET` | `/rules/metrics` | Metric catalog for the builder UI |
+| `GET` | `/rules/stats` | Per-rule lifetime stats: signal counts + +5m/+30m/+1d hit rate & avg return |
 | `POST` | `/rules/preview` | Evaluate draft rule against current live `TickerState`s → matched symbols |
 
 ---
 
-## 📊 Dashboard columns
+## 📊 Per-ticker snapshot columns
+
+Served by `GET /dashboard/snapshot` and surfaced in the Dashboard's expandable tracked-universe
+panel and the Stock Explorer:
 
 | Column | Source |
 |--------|--------|
@@ -178,13 +180,13 @@ marimo edit notebooks/darkpool_exploration.py
 
 ## 🔔 Built-in Signal Rules
 
-| Rule | Logic | Severity |
-|------|-------|----------|
-| **Whale Buy** | Single trade notional ≥ $500k AND side = ask | critical |
-| **Block Trade** | `is_block = true` (size ≥ 10 000 shares) | warning |
-| **Bullish Sweep** | Ask-side notional in last 5 min ≥ $1M | warning |
-| **Price Breakout** | Price move ≥ 1 % in last 10 min | info |
-| **Bearish Net Flow** | Net flow notional in last 15 min ≤ −$500k | warning |
+| Rule | Logic | Side |
+|------|-------|------|
+| **Whale Buy** | Single trade notional ≥ $500k AND side = ask | bull |
+| **Block Trade** | `is_block = true` (size ≥ 10 000 shares) | neutral |
+| **Bullish Sweep** | Ask-side notional in last 5 min ≥ $1M | bull |
+| **Price Breakout** | Price move ≥ 1 % in last 10 min | bull |
+| **Bearish Net Flow** | Net flow notional in last 15 min ≤ −$500k | bear |
 
 Add or modify rules at runtime via `POST /rules` or the Strategy Lab UI — the engine hot-reloads immediately.
 
@@ -199,20 +201,19 @@ python3 -m pytest backend/app/rules/tests    # 15 unit tests for the rule engine
 
 ---
 
-## 📈 Extending with a new strategy (legacy backtester)
+## 🧪 Validating a rule (signal backtest)
 
-Subclass `Strategy` in `backtester/strategies.py` and implement `calculate(df)`:
+The backtest is a **signal-quality tool**, not a P&L simulator. From the Strategy Lab, hit
+"Backtest this rule" (or `POST /backtest/rules`) to replay historical TRF trades for up to a
+handful of symbols through a fresh `RuleEngine`. The result answers one question — *did the signal
+predict the move?*:
 
-```python
-from backtester import Strategy
+- **`signals`** — every fire, with symbol, timestamp, side (bull/bear/neutral), and price.
+- **`forward_return_stats`** — per-rule, per-horizon (+5m/+30m/+1d) hit rate, avg/median return,
+  best/worst.
+- **`price_series`** — a downsampled price path per symbol so the chart can mark each signal.
 
-class MyStrategy(Strategy):
-    def calculate(self, df):
-        # compute indicators, return (df_with_indicators, signals_list)
-        return df, []
-```
-
-Re-export from `backtester/__init__.py` and call via `POST /backtest/run`.
+A fresh engine is used so the backtest never pollutes the live ingestion stats.
 
 ---
 

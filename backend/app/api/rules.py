@@ -32,7 +32,6 @@ class RuleCreate(BaseModel):
     name: str
     logic: dict
     enabled: bool = True
-    severity: str = "info"
     side_label: Optional[str] = None
     kind: str = "SIGNAL"
     cooldown_s: float = 300.0
@@ -42,7 +41,6 @@ class RuleUpdate(BaseModel):
     name: Optional[str] = None
     logic: Optional[dict] = None
     enabled: Optional[bool] = None
-    severity: Optional[str] = None
     side_label: Optional[str] = None
     kind: Optional[str] = None
     cooldown_s: Optional[float] = None
@@ -51,7 +49,6 @@ class RuleUpdate(BaseModel):
 class PreviewRequest(BaseModel):
     logic: dict
     enabled: bool = True
-    severity: str = "info"
     side_label: Optional[str] = None
     kind: str = "SIGNAL"
     cooldown_s: float = 0.0
@@ -111,7 +108,6 @@ def rule_stats(request: Request):
                 "id": rule["id"],
                 "name": rule["name"],
                 "enabled": rule["enabled"],
-                "severity": rule["severity"],
                 "side_label": rule.get("side_label"),
                 "kind": rule.get("kind"),
                 "cooldown_s": rule["cooldown_s"],
@@ -139,7 +135,6 @@ def create_rule(body: RuleCreate, request: Request):
         name=body.name,
         logic=body.logic,
         enabled=body.enabled,
-        severity=body.severity,
         side_label=body.side_label,
         kind=body.kind,
         cooldown_s=body.cooldown_s,
@@ -190,7 +185,6 @@ def preview_rule(body: PreviewRequest, request: Request):
         name="_preview",
         logic=body.logic,
         enabled=True,
-        severity=body.severity,
         side_label=body.side_label,
         kind=body.kind,
         cooldown_s=0.0,

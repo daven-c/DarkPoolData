@@ -18,7 +18,7 @@ This document plans the auth integration. **Nothing has been implemented yet.** 
 │            │ session token   │
 │            ▼                 │
 │  ┌────────────────────────┐  │
-│  │  TickerDashboard       │  │
+│  │  SignalsDashboard      │  │
 │  └─────────┬──────────────┘  │
 └────────────┼─────────────────┘
              │ Authorization: Bearer <JWT>   (and ?token=… on SSE)
@@ -125,7 +125,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
 **Edit `frontend/src/main.tsx`** — wrap `<App />` with `<AuthGate>`.
 
-**Edit fetch / EventSource calls in [TickerDashboard.tsx](frontend/src/TickerDashboard.tsx) and [App.tsx](frontend/src/App.tsx)** — attach the JWT. Add a small helper:
+**Edit fetch / EventSource calls in the data-fetching components ([SignalsDashboard.tsx](frontend/src/SignalsDashboard.tsx), [AlertsFeed.tsx](frontend/src/AlertsFeed.tsx), [StockExplorer.tsx](frontend/src/StockExplorer.tsx)) and [App.tsx](frontend/src/App.tsx)** — attach the JWT. Add a small helper:
 
 ```ts
 async function authedFetch(url: string, init: RequestInit = {}) {

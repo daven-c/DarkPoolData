@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Activity, Radio, Zap, Clock, Gauge, Database, ChevronDown, ChevronRight } from "lucide-react";
+import { Activity, Radio, Zap, Clock, Gauge, Database, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 const API_BASE = "http://localhost:8000/api/v1";
 
@@ -11,7 +11,6 @@ type RuleStat = {
   id: string;
   name: string;
   enabled: boolean;
-  severity: string;
   side_label: string | null;
   cooldown_s: number;
   logic: any;
@@ -36,7 +35,7 @@ type RecentSignal = {
   rule_name: string;
   symbol: string;
   ts: number;
-  severity: string;
+  side_label: string | null;
   price: number;
   message: string;
 };
@@ -63,14 +62,15 @@ function fmtHit(v: number | null): React.ReactNode {
   const good = v >= 50;
   return <span style={{ color: good ? "#34d399" : "#fbbf24" }}>{v.toFixed(0)}%</span>;
 }
-function SeverityBadge({ s }: { s: string }) {
-  const map: Record<string, { bg: string; color: string; border: string }> = {
-    critical: { bg: "rgba(239,68,68,0.15)", color: "#f87171", border: "rgba(239,68,68,0.35)" },
-    warning:  { bg: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "rgba(245,158,11,0.35)" },
-    info:     { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "rgba(59,130,246,0.35)" },
-  };
-  const c = map[s] ?? map.info;
-  return <span className="badge" style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}>{s}</span>;
+function SideBadge({ s }: { s: string | null }) {
+  const v = s === "bull" || s === "bear" ? s : "neutral";
+  const map = {
+    bull:    { bg: "rgba(16,185,129,0.12)", color: "#34d399", border: "rgba(16,185,129,0.3)", icon: <TrendingUp size={10} style={{ marginRight: 3 }} /> },
+    bear:    { bg: "rgba(239,68,68,0.12)",  color: "#f87171", border: "rgba(239,68,68,0.3)",  icon: <TrendingDown size={10} style={{ marginRight: 3 }} /> },
+    neutral: { bg: "rgba(148,163,184,0.12)", color: "#94a3b8", border: "rgba(148,163,184,0.3)", icon: <Minus size={10} style={{ marginRight: 3 }} /> },
+  } as const;
+  const c = map[v];
+  return <span className="badge" style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}>{c.icon}{v}</span>;
 }
 
 /** Compact, human-readable summary of a rule's condition tree. */
@@ -272,7 +272,7 @@ export default function SignalsDashboard() {
               <thead>
                 <tr style={{ borderBottom: "1px solid hsl(var(--border-color))", color: "hsl(var(--text-muted))", fontSize: "0.7rem", letterSpacing: "0.05em" }}>
                   <th style={{ padding: "10px 8px", textAlign: "left" }}>RULE</th>
-                  <th style={{ padding: "10px 8px", textAlign: "left" }}>SEVERITY</th>
+                  <th style={{ padding: "10px 8px", textAlign: "left" }}>SIDE</th>
                   <th style={{ padding: "10px 8px", textAlign: "left" }}>STATE</th>
                   <th style={{ padding: "10px 8px", textAlign: "left" }}>CONDITION</th>
                   <th style={{ padding: "10px 8px", textAlign: "right" }}>TODAY</th>
@@ -295,7 +295,7 @@ export default function SignalsDashboard() {
                 {rules.map((r) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)", opacity: r.enabled ? 1 : 0.5 }}>
                     <td style={{ padding: "10px 8px", fontWeight: 600 }}>{r.name}</td>
-                    <td style={{ padding: "10px 8px" }}><SeverityBadge s={r.severity} /></td>
+                    <td style={{ padding: "10px 8px" }}><SideBadge s={r.side_label} /></td>
                     <td style={{ padding: "10px 8px" }}>
                       <span style={{ fontSize: "0.75rem", color: r.enabled ? "#34d399" : "hsl(var(--text-muted))" }}>
                         {r.enabled ? "● enabled" : "○ disabled"}
@@ -336,7 +336,7 @@ export default function SignalsDashboard() {
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,0.03)", fontSize: "0.85rem" }}>
                 <span style={{ color: "hsl(var(--text-muted))", fontSize: "0.75rem", whiteSpace: "nowrap", width: 72 }}>{fmtTime(s.ts)}</span>
                 <span style={{ fontWeight: 700, width: 60 }}>{s.symbol}</span>
-                <SeverityBadge s={s.severity} />
+                <SideBadge s={s.side_label} />
                 <span style={{ color: "hsl(var(--text-muted))", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.message}</span>
                 <span style={{ fontFamily: "var(--font-display)" }}>${s.price.toFixed(2)}</span>
               </div>

@@ -15,8 +15,7 @@ class Signal:
     symbol: str
     ts: float
     kind: str           # e.g. "WHALE", "SWEEP", "BREAKOUT", "SIGNAL"
-    severity: str       # "info" | "warning" | "critical"
-    side_label: Optional[str]  # "bull" | "bear" | None
+    side_label: Optional[str]  # "bull" | "bear" | None (neutral)
     price: float
     message: str
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -31,8 +30,7 @@ class Rule:
     logic: dict                       # JSON condition tree
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     enabled: bool = True
-    severity: str = "info"
-    side_label: Optional[str] = None  # "bull" | "bear"
+    side_label: Optional[str] = None  # "bull" | "bear" | None (neutral)
     kind: str = "SIGNAL"
     cooldown_s: float = 300.0
 
@@ -54,7 +52,6 @@ class Rule:
             symbol=event.symbol,
             ts=event.ts,
             kind=self.kind,
-            severity=self.severity,
             side_label=self.side_label,
             price=event.price,
             message=msg,
@@ -74,7 +71,6 @@ class Rule:
             "id": self.id,
             "name": self.name,
             "enabled": self.enabled,
-            "severity": self.severity,
             "side_label": self.side_label,
             "kind": self.kind,
             "cooldown_s": self.cooldown_s,
@@ -88,7 +84,6 @@ class Rule:
             logic=d["logic"],
             id=d.get("id", uuid.uuid4().hex[:12]),
             enabled=d.get("enabled", True),
-            severity=d.get("severity", "info"),
             side_label=d.get("side_label"),
             kind=d.get("kind", "SIGNAL"),
             cooldown_s=d.get("cooldown_s", 300.0),

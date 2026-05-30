@@ -7,10 +7,10 @@ Canonical guide for AI agents (Claude Code et al.) working in this repo. (Former
 DarkPoolData is a platform for ingesting, exploring, backtesting, and alerting on off-exchange (TRF/dark pool) trade data sourced from the Massive.com (formerly Polygon.io) APIs. It is composed of cooperating pieces that share a Python package and a single `.env`:
 
 - **`backend/`** — FastAPI service (entry: `backend/app/main.py`) exposing `/api/v1/darkpool/*`, `/api/v1/backtest/*`, `/api/v1/dashboard/*`, and (in the redesign) `/api/v1/alerts/*` and `/api/v1/rules/*`. Configuration is loaded by `backend/app/core/config.py` (pydantic-settings, reads `.env`, `backend/.env`, or `../.env`).
-- **`backend/app/rules/`** *(redesign)* — the platform's core: a `RuleEngine` that evaluates composable `Condition` trees against a stream of `MarketEvent`s, producing `Signal`s. The **same engine runs live** (WS stream → alerts) **and in backtest** (historical replay → signal-quality + Portfolio P&L). This is the load-bearing abstraction; see ROADMAP.md Part A.
-- **`backtester/`** — Pure-Python simulation library imported by the backend, the Discord bot, and the notebooks. Public surface is re-exported from `backtester/__init__.py`: `Strategy`, `Portfolio`, `DataProvider`, `CSVDataProvider`, `APIDataProvider`, `MockDataProvider`, `BacktestEngine`, `DarkPoolSpikeStrategy`, `SMACrossStrategy`. NOTE: `Portfolio` was historically orphaned (the legacy `BacktestEngine` never used it); the redesign wires it into rule-based P&L backtesting.
+- **`backend/app/rules/`** — the platform's core: a `RuleEngine` that evaluates composable `Condition` trees against a stream of `MarketEvent`s, producing `Signal`s. The **same engine runs live** (WS stream → alerts) **and in backtest** (historical replay → forward-return signal validation). This is the load-bearing abstraction; see ROADMAP.md.
+- **`backtester/`** — Pure-Python data-provider library imported by the backend and the notebooks. Public surface is re-exported from `backtester/__init__.py`: `DataProvider`, `CSVDataProvider`, `APIDataProvider`, `MockDataProvider`. (The legacy simulation classes — `Strategy`, `Portfolio`, `BacktestEngine`, `DarkPoolSpikeStrategy`, `SMACrossStrategy` — were removed when the backtest became a signal validator; only the data providers remain.)
 - **`bot/bot.py`** — `discord.py` client with an embedded `aiohttp` webhook server on port `5000` (`POST /alert`) that the backend pushes alerts to.
-- **`frontend/`** — React 19 + Vite + TypeScript SPA. `src/App.tsx` is the tab shell; tabs include Ticker Dashboard, Alerts feed, Strategy Lab, Rule Backtest, Indicator Visualizer, Scanner.
+- **`frontend/`** — React 19 + Vite + TypeScript SPA. `src/App.tsx` is the 4-tab shell: **Dashboard** (`SignalsDashboard`), **Alerts** (`AlertsFeed`), **Strategy Lab** (`StrategyLab`, with inline `RuleBacktest`), **Stock Explorer** (`StockExplorer`).
 - **`notebooks/`** — Marimo notebooks (`darkpool_exploration.py`, `csv_downloader.py`) for ad-hoc analysis. Reuse `backtester` rather than duplicating logic.
 
 ## Conventions
@@ -21,9 +21,9 @@ DarkPoolData is a platform for ingesting, exploring, backtesting, and alerting o
 - **CSV/parquet/sqlite files are gitignored** — they are local data artifacts, not source. Don't commit them.
 - **Python SDK is `massive`** (renamed from `polygon-api-client` on 2025-10-30 when Polygon.io rebranded). Import as `from massive import RESTClient, WebSocketClient` and `from massive.websocket.models import Feed, Market`. The upstream rename was a drop-in: methods, models, enums, and `T.<ticker>` subscription strings are unchanged.
 
-## Adding a new backtest strategy
+## Adding / validating a rule
 
-Subclass `Strategy` in `backtester/strategies.py` (or a new file in that package) and implement `calculate(df) -> (df_with_indicators, signals_list)`. Re-export it from `backtester/__init__.py` if it should be importable as `from backtester import …`. The engine in `backtester/engine.py` drives it.
+Rules are composable `Condition` trees, not Python subclasses — author them in the Strategy Lab UI or via `POST /rules` (they hot-reload into the live engine). To check a rule's quality, run `POST /backtest/rules` (or the inline "Backtest this rule" button): it replays historical TRF trades through a **fresh** `RuleEngine` and returns forward-return hit rates + a price series with signal markers. There is no portfolio P&L simulation — the question is "did the signal predict the move?". When adding a new **metric** for rules to reference, edit `backend/app/rules/metrics.py` and add a test (see below).
 
 ## Running things
 
@@ -43,10 +43,10 @@ If `MASSIVE_API_KEY` is unset, the backtest engine falls back to `MockDataProvid
 | `GET` | `/dashboard/snapshot` | Paginated, sortable current state of the WS universe (reads `engine.snapshot()`) |
 | `GET` | `/dashboard/stream` | SSE feed of per-trade `TickerState` deltas (subscribes to `engine.subscribe()`) |
 | `GET` | `/dashboard/universe` | Active top-N ticker list |
+| `GET` | `/dashboard/health` | Engine-health strip: tickers tracked/active, signals today, last-signal ts, feed tier |
 | `GET` | `/darkpool/summary` | Single-symbol TRF aggregates for a date |
 | `GET` | `/darkpool/trades` | Raw TRF tick log for a symbol/date |
-| `POST` | `/backtest/run` | Legacy indicator-strategy backtest (Recharts equity curve) |
-| `POST` | `/backtest/rules` | Rule-based backtest: forward-return stats + Portfolio P&L + equity curve |
+| `POST` | `/backtest/rules` | Signal-validator backtest: forward-return stats + price series (no P&L) |
 | `GET` | `/alerts/stream` | SSE fan-out of live `Signal` events |
 | `GET` | `/alerts/recent` | Most-recent N alerts (default 100) |
 | `GET` | `/alerts/history` | Historical alerts with stamped `+5m/+30m/+1d` returns; filter by `symbol`, `rule_name`, `limit` |
@@ -55,6 +55,7 @@ If `MASSIVE_API_KEY` is unset, the backtest engine falls back to `MockDataProvid
 | `PATCH` | `/rules/{id}` | Partial-update a rule + hot-reload engine |
 | `DELETE` | `/rules/{id}` | Delete a rule + hot-reload engine |
 | `GET` | `/rules/metrics` | Metric catalog for the Strategy Lab builder UI |
+| `GET` | `/rules/stats` | Per-rule lifetime stats: signal counts + +5m/+30m/+1d hit rate & avg return |
 | `POST` | `/rules/preview` | Evaluate a draft rule against current `TickerState`s → matched symbols |
 
 ## Rule engine (`backend/app/rules/`)
@@ -68,7 +69,7 @@ The core abstraction for the redesign. Key files:
 | `conditions.py` | `Leaf` (metric ▸ cmp ▸ value ▸ window_s) + `Composite` (AND/OR/NOT); `compile_condition()`, `evaluate()`, `validate_logic()` |
 | `index.py` | `RuleIndex`: 1D index utilizing sorted lists + binary search (`bisect`) for range inequalities and Hash Maps for equality; includes 2-decimal rounding leaf deduplication. |
 | `evaluator.py` | `compile_evaluator()` + `EvalNode` tree subclasses; flattens condition trees for fast boolean short-circuit evaluation. |
-| `rule.py` | `Rule` (id, name, enabled, severity, side_label, kind, cooldown_s, logic) + `Signal`; JSON round-trip |
+| `rule.py` | `Rule` (id, name, enabled, side_label, kind, cooldown_s, logic) + `Signal`; JSON round-trip. `side_label` is `"bull"`/`"bear"`/`None` (neutral) — the only directional flag (severity was removed) |
 | `engine.py` | `RuleEngine`: per-ticker `TickerState` + active rules; `process(event)` utilizing eager metric caching and indexed evaluation; `set_rules()` (hot-reload); `snapshot()` (dashboard feed); `preview()` (match current state without mutating); SSE `subscribe()` async generator |
 | `builtins.py` | 5 seed rules: Whale Buy, Block Trade, Bullish Sweep, Price Breakout, Bearish Net Flow |
 | `tests/` | 15 pytest cases (test_engine.py and test_optimized_engine.py) — run with `python3 -m pytest backend/app/rules/tests` |
@@ -77,6 +78,6 @@ The core abstraction for the redesign. Key files:
 
 ## Notes for edits
 
-- The shared package layout is load-bearing — moving `backtester/` or renaming its public symbols breaks all four consumers at once. Update the re-exports in `backtester/__init__.py` and the README architecture diagram together with any such change.
+- The shared package layout is load-bearing — moving `backtester/` or renaming its data-provider symbols breaks the backend and notebooks at once. Update the re-exports in `backtester/__init__.py` and the README architecture diagram together with any such change.
 - CORS in `backend/app/main.py` is intentionally permissive (`allow_origins=["*"]`) for local development. Don't tighten it without confirming the deployment story.
 - When adding a new metric to `metrics.py`, also add a test case in `backend/app/rules/tests/` and verify the metric appears in `GET /rules/metrics`.

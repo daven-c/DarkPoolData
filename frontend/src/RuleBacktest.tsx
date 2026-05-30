@@ -13,7 +13,7 @@ import {
 
 const API_BASE = "http://localhost:8000/api/v1";
 
-type RuleRow = { id: string; name: string; enabled: boolean; severity: string };
+type RuleRow = { id: string; name: string; enabled: boolean };
 type HorizonStat = {
   count: number;
   hit_rate: number;
@@ -29,7 +29,6 @@ type SignalRow = {
   rule_name: string;
   symbol: string;
   ts: number;
-  severity: string;
   side_label: string | null;
   price: number;
 };

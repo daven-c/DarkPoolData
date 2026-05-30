@@ -166,7 +166,6 @@ def run_rule_backtest(
             "symbol": s.symbol,
             "ts": s.ts,
             "kind": s.kind,
-            "severity": s.severity,
             "side_label": s.side_label,
             "price": s.price,
             "message": s.message,

@@ -22,8 +22,8 @@ This document is designed to help you showcase the **DarkPoolData Platform** on 
 ### 3. Business Analytics & Backtesting (Financial Engineering)
 * **Option A (Focus on Data Analytics):**
   > **Built a automated signal validation pipeline** that stamps historical trade alerts with $+5\text{m}$, $+30\text{m}$, and $+1\text{d}$ forward returns, transforming raw streaming market data into a structured research dataset to verify signal alpha.
-* **Option B (Focus on Backtesting & Portfolio Math):**
-  > **Engineered a historical backtesting framework** that replays off-exchange tick data through user rules to compute Portfolio P&L, Sharpe ratios, and maximum drawdown, bridging the gap between backtested theories and live alerts.
+* **Option B (Focus on Signal-Quality Backtesting):**
+  > **Engineered a historical signal-validation engine** that replays off-exchange tick data through the same rule engine used live, measuring each rule's predictive power via per-horizon forward-return hit rates (+5m/+30m/+1d) and rendering signal markers over a reconstructed price path — proving whether a signal actually preceded the move.
 
 ---
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Activity, Clock, Filter, TrendingDown, TrendingUp } from "lucide-react";
+import { Activity, Clock, Filter, Minus, TrendingDown, TrendingUp } from "lucide-react";
 
 const API_BASE = "http://localhost:8000/api/v1";
 const MAX_LIVE = 100;
@@ -10,7 +10,6 @@ type Signal = {
   symbol: string;
   ts: number;
   kind: string;
-  severity: string;
   side_label: string | null;
   price: number;
   message: string;
@@ -33,31 +32,17 @@ function fmtRet(v: number | null | undefined): React.ReactNode {
   return <span style={{ color: pos ? "#10b981" : "#ef4444" }}>{pos ? "+" : ""}{v.toFixed(2)}%</span>;
 }
 
-function SeverityBadge({ s }: { s: string }) {
-  const map: Record<string, { bg: string; color: string; border: string }> = {
-    critical: { bg: "rgba(239,68,68,0.15)", color: "#f87171", border: "rgba(239,68,68,0.35)" },
-    warning:  { bg: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "rgba(245,158,11,0.35)" },
-    info:     { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "rgba(59,130,246,0.35)" },
-  };
-  const c = map[s] ?? map.info;
+function SideBadge({ s }: { s: string | null }) {
+  const v = s === "bull" || s === "bear" ? s : "neutral";
+  const map = {
+    bull:    { bg: "rgba(16,185,129,0.12)", color: "#34d399", border: "rgba(16,185,129,0.3)", icon: <TrendingUp size={10} style={{ marginRight: 3 }} /> },
+    bear:    { bg: "rgba(239,68,68,0.12)",  color: "#f87171", border: "rgba(239,68,68,0.3)",  icon: <TrendingDown size={10} style={{ marginRight: 3 }} /> },
+    neutral: { bg: "rgba(148,163,184,0.12)", color: "#94a3b8", border: "rgba(148,163,184,0.3)", icon: <Minus size={10} style={{ marginRight: 3 }} /> },
+  } as const;
+  const c = map[v];
   return (
     <span className="badge" style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}>
-      {s}
-    </span>
-  );
-}
-
-function SideBadge({ s }: { s: string | null }) {
-  if (!s) return null;
-  const bull = s === "bull";
-  return (
-    <span className="badge" style={{
-      background: bull ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
-      color: bull ? "#34d399" : "#f87171",
-      border: `1px solid ${bull ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
-    }}>
-      {bull ? <TrendingUp size={10} style={{ marginRight: 3 }} /> : <TrendingDown size={10} style={{ marginRight: 3 }} />}
-      {s}
+      {c.icon}{v}
     </span>
   );
 }
@@ -71,7 +56,6 @@ function SignalRow({ sig, showFwd = false }: { sig: Signal; showFwd?: boolean })
       </td>
       <td style={{ padding: "10px 8px", fontWeight: 700 }}>{sig.symbol}</td>
       <td style={{ padding: "10px 8px" }}>{sig.rule_name}</td>
-      <td style={{ padding: "10px 8px" }}><SeverityBadge s={sig.severity} /></td>
       <td style={{ padding: "10px 8px" }}><SideBadge s={sig.side_label} /></td>
       <td style={{ padding: "10px 8px", fontFamily: "var(--font-display)" }}>${sig.price.toFixed(2)}</td>
       {showFwd && (
@@ -232,7 +216,6 @@ export default function AlertsFeed() {
                     <th style={{ padding: "10px 8px", textAlign: "left" }}>TIME</th>
                     <th style={{ padding: "10px 8px", textAlign: "left" }}>SYMBOL</th>
                     <th style={{ padding: "10px 8px", textAlign: "left" }}>RULE</th>
-                    <th style={{ padding: "10px 8px", textAlign: "left" }}>SEVERITY</th>
                     <th style={{ padding: "10px 8px", textAlign: "left" }}>SIDE</th>
                     <th style={{ padding: "10px 8px", textAlign: "left" }}>PRICE</th>
                   </tr>
@@ -257,7 +240,6 @@ export default function AlertsFeed() {
                   <th style={{ padding: "10px 8px", textAlign: "left" }}>TIME</th>
                   <th style={{ padding: "10px 8px", textAlign: "left" }}>SYMBOL</th>
                   <th style={{ padding: "10px 8px", textAlign: "left" }}>RULE</th>
-                  <th style={{ padding: "10px 8px", textAlign: "left" }}>SEVERITY</th>
                   <th style={{ padding: "10px 8px", textAlign: "left" }}>SIDE</th>
                   <th style={{ padding: "10px 8px", textAlign: "left" }}>PRICE</th>
                   <th style={{ padding: "10px 8px", textAlign: "center" }}>+5m RET</th>

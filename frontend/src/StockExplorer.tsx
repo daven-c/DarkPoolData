@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, TrendingUp, TrendingDown, History } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Minus, History } from "lucide-react";
 import {
   ResponsiveContainer,
   Tooltip,
@@ -18,7 +18,6 @@ type RuleHit = {
   rule_name: string;
   symbol: string;
   ts: number;
-  severity: string;
   side_label: string | null;
   price: number;
   forward_5m?: number | null;
@@ -36,29 +35,16 @@ function fmtRet(v: number | null | undefined): React.ReactNode {
   const pos = v >= 0;
   return <span style={{ color: pos ? "#10b981" : "#ef4444" }}>{pos ? "+" : ""}{v.toFixed(2)}%</span>;
 }
-function SeverityBadge({ s }: { s: string }) {
-  const map: Record<string, { bg: string; color: string; border: string }> = {
-    critical: { bg: "rgba(239,68,68,0.15)", color: "#f87171", border: "rgba(239,68,68,0.35)" },
-    warning:  { bg: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "rgba(245,158,11,0.35)" },
-    info:     { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "rgba(59,130,246,0.35)" },
-  };
-  const c = map[s] ?? map.info;
-  return (
-    <span className="badge" style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}>{s}</span>
-  );
-}
 function SideBadge({ s }: { s: string | null }) {
-  if (!s) return null;
-  const bull = s === "bull";
+  const v = s === "bull" || s === "bear" ? s : "neutral";
+  const map = {
+    bull:    { bg: "rgba(16,185,129,0.12)", color: "#34d399", border: "rgba(16,185,129,0.3)", icon: <TrendingUp size={10} style={{ marginRight: 3 }} /> },
+    bear:    { bg: "rgba(239,68,68,0.12)",  color: "#f87171", border: "rgba(239,68,68,0.3)",  icon: <TrendingDown size={10} style={{ marginRight: 3 }} /> },
+    neutral: { bg: "rgba(148,163,184,0.12)", color: "#94a3b8", border: "rgba(148,163,184,0.3)", icon: <Minus size={10} style={{ marginRight: 3 }} /> },
+  } as const;
+  const c = map[v];
   return (
-    <span className="badge" style={{
-      background: bull ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
-      color: bull ? "#34d399" : "#f87171",
-      border: `1px solid ${bull ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
-    }}>
-      {bull ? <TrendingUp size={10} style={{ marginRight: 3 }} /> : <TrendingDown size={10} style={{ marginRight: 3 }} />}
-      {s}
-    </span>
+    <span className="badge" style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}>{c.icon}{v}</span>
   );
 }
 
@@ -180,7 +166,6 @@ export default function StockExplorer() {
                   <tr style={{ borderBottom: "1px solid hsl(var(--border-color))", color: "hsl(var(--text-muted))", fontSize: "0.72rem", letterSpacing: "0.06em" }}>
                     <th style={{ padding: "10px 8px", textAlign: "left" }}>TIME</th>
                     <th style={{ padding: "10px 8px", textAlign: "left" }}>RULE</th>
-                    <th style={{ padding: "10px 8px", textAlign: "left" }}>SEVERITY</th>
                     <th style={{ padding: "10px 8px", textAlign: "left" }}>SIDE</th>
                     <th style={{ padding: "10px 8px", textAlign: "left" }}>PRICE</th>
                     <th style={{ padding: "10px 8px", textAlign: "center" }}>+5m</th>
@@ -193,7 +178,6 @@ export default function StockExplorer() {
                     <tr key={h.id ?? i} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
                       <td style={{ padding: "10px 8px", whiteSpace: "nowrap", color: "hsl(var(--text-muted))" }}>{fmtTs(h.ts)}</td>
                       <td style={{ padding: "10px 8px" }}>{h.rule_name}</td>
-                      <td style={{ padding: "10px 8px" }}><SeverityBadge s={h.severity} /></td>
                       <td style={{ padding: "10px 8px" }}><SideBadge s={h.side_label} /></td>
                       <td style={{ padding: "10px 8px", fontFamily: "var(--font-display)" }}>${h.price.toFixed(2)}</td>
                       <td style={{ padding: "10px 8px", textAlign: "center" }}>{fmtRet(h.forward_5m)}</td>

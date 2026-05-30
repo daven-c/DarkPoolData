@@ -17,7 +17,6 @@ type RuleRow = {
   id: string;
   name: string;
   enabled: boolean;
-  severity: string;
   side_label: string | null;
   kind: string;
   cooldown_s: number;
@@ -33,13 +32,13 @@ type ConditionLeaf = {
 };
 
 const CMPS = [">=", ">", "<=", "<", "==", "!="];
-const SEVERITIES = ["info", "warning", "critical"];
 const KINDS = ["SIGNAL", "WHALE", "SWEEP", "BREAKOUT", "BLOCK", "FLOW"];
 const SIDES = ["", "bull", "bear"];
 
-function SeverityPip({ s }: { s: string }) {
-  const colors: Record<string, string> = { critical: "#ef4444", warning: "#f59e0b", info: "#60a5fa" };
-  return <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: colors[s] ?? "#60a5fa", marginRight: 5 }} />;
+function SideDot({ s }: { s: string | null }) {
+  const v = s === "bull" || s === "bear" ? s : "neutral";
+  const colors: Record<string, string> = { bull: "#34d399", bear: "#f87171", neutral: "#94a3b8" };
+  return <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: colors[v], marginRight: 5 }} />;
 }
 
 function emptyLeaf(metrics: MetricSpec[]): ConditionLeaf {
@@ -55,7 +54,6 @@ export default function StrategyLab() {
   // Builder state
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("My Rule");
-  const [severity, setSeverity] = useState("info");
   const [kind, setKind] = useState("SIGNAL");
   const [sideLabel, setSideLabel] = useState("");
   const [cooldown, setCooldown] = useState(300);
@@ -96,7 +94,6 @@ export default function StrategyLab() {
   function resetForm() {
     setEditId(null);
     setName("My Rule");
-    setSeverity("info");
     setKind("SIGNAL");
     setSideLabel("");
     setCooldown(300);
@@ -112,7 +109,6 @@ export default function StrategyLab() {
   function loadForEdit(r: RuleRow) {
     setEditId(r.id);
     setName(r.name);
-    setSeverity(r.severity);
     setKind(r.kind);
     setSideLabel(r.side_label ?? "");
     setCooldown(r.cooldown_s);
@@ -176,7 +172,7 @@ export default function StrategyLab() {
       const r = await fetch(`${API_BASE}/rules/preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logic, severity, side_label: sideLabel || null, kind, cooldown_s: cooldown }),
+        body: JSON.stringify({ logic, side_label: sideLabel || null, kind, cooldown_s: cooldown }),
       });
       const d = await r.json();
       if (!r.ok) { setSaveMsg(`Preview error: ${d.detail}`); }
@@ -193,7 +189,6 @@ export default function StrategyLab() {
     const body = {
       name, logic,
       enabled: true,
-      severity,
       side_label: sideLabel || null,
       kind,
       cooldown_s: cooldown,
@@ -299,7 +294,7 @@ export default function StrategyLab() {
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <SeverityPip s={r.severity} />
+                      <SideDot s={r.side_label} />
                       <span style={{ fontWeight: 600, fontSize: "0.88rem", color: r.enabled ? "hsl(var(--text-main))" : "hsl(var(--text-muted))" }}>
                         {r.name}
                       </span>
@@ -349,12 +344,6 @@ export default function StrategyLab() {
             <div>
               <label style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))", display: "block", marginBottom: 4 }}>Name</label>
               <input className="input-field" style={{ width: "100%" }} value={name} onChange={e => setName(e.target.value)} />
-            </div>
-            <div>
-              <label style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))", display: "block", marginBottom: 4 }}>Severity</label>
-              <select className="input-field" style={{ width: "100%", background: "#0a0f1d" }} value={severity} onChange={e => setSeverity(e.target.value)}>
-                {SEVERITIES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
             </div>
             <div>
               <label style={{ fontSize: "0.75rem", color: "hsl(var(--text-muted))", display: "block", marginBottom: 4 }}>Kind</label>

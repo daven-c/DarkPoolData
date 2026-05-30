@@ -46,8 +46,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     rule_name   TEXT NOT NULL,
     symbol      TEXT NOT NULL,
     ts          REAL NOT NULL,       -- epoch seconds (signal fired)
-    severity    TEXT NOT NULL,
-    side_label  TEXT,
+    side_label  TEXT,                -- 'bull' | 'bear' | NULL (neutral)
     kind        TEXT NOT NULL,
     price       REAL NOT NULL,
     message     TEXT NOT NULL,
@@ -76,6 +75,14 @@ class AlertStore:
         os.makedirs(DB_DIR, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            self._migrate(conn)
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        """Drop the deprecated `severity` column from pre-existing DBs."""
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(alerts)").fetchall()}
+        if "severity" in cols:
+            conn.execute("ALTER TABLE alerts DROP COLUMN severity")
 
     @contextmanager
     def _connect(self):
@@ -93,16 +100,15 @@ class AlertStore:
         with self._connect() as conn:
             conn.execute(
                 """INSERT OR IGNORE INTO alerts
-                   (id, rule_id, rule_name, symbol, ts, severity, side_label,
+                   (id, rule_id, rule_name, symbol, ts, side_label,
                     kind, price, message, metadata)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     alert_id,
                     signal.rule_id,
                     signal.rule_name,
                     signal.symbol,
                     signal.ts,
-                    signal.severity,
                     signal.side_label,
                     signal.kind,
                     signal.price,
@@ -371,7 +377,7 @@ class AlertDispatcher:
             print(f"[AlertDispatcher] SQLite insert error: {e}", flush=True)
 
         print(
-            f"[Signal] {sig.rule_name} | {sig.symbol} | {sig.severity} | {sig.message}",
+            f"[Signal] {sig.rule_name} | {sig.symbol} | {sig.side_label or 'neutral'} | {sig.message}",
             flush=True,
         )
 
