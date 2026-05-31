@@ -105,3 +105,65 @@ class DashboardStreamer:
         # so we cannot safely await it from here. The thread is daemon=True; it will be
         # torn down with the process. Setting the flag is enough for any cooperative checks.
         self._stopped.set()
+
+
+class MockStreamer:
+    """Simulates market data flow when the WebSocket is not active.
+
+    Generates random walk trades for the universe of tickers and processes
+    them via RuleEngine.process() in a background daemon thread.
+    """
+
+    def __init__(self, universe: List[str], engine: RuleEngine, alert_callback=None, interval_s: float = 0.5):
+        self.universe = universe
+        self.engine = engine
+        self.alert_callback = alert_callback
+        self.interval_s = interval_s
+        self._thread: Optional[threading.Thread] = None
+        self._stopped = threading.Event()
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self._run, name="mock-streamer", daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        import random
+        print(f"[MockStreamer] starting trade simulation for {len(self.universe)} tickers", flush=True)
+
+        # Initialize mock price state
+        prices = {symbol: random.uniform(50.0, 350.0) for symbol in self.universe}
+
+        while not self._stopped.is_set():
+            # Pick a random ticker from the universe to trade
+            symbol = random.choice(self.universe)
+
+            # Simulate a small random price fluctuation
+            price_change = random.uniform(-0.0015, 0.0015)
+            prices[symbol] = max(1.0, prices[symbol] * (1.0 + price_change))
+
+            # Simulate size (shares)
+            # 10% chance of a block trade (>= 10,000 shares)
+            if random.random() < 0.10:
+                size = random.randint(10_000, 35_000)
+            else:
+                size = random.randint(10, 5_000)
+
+            event = MarketEvent(
+                symbol=symbol,
+                ts=time.time(),
+                price=round(prices[symbol], 2),
+                size=size,
+                exchange=settings.DASHBOARD_TRF_EXCHANGE_ID,
+            )
+
+            signals = self.engine.process(event)
+            if signals and self.alert_callback is not None:
+                self.alert_callback(signals)
+
+            # Sleep a random small duration between trades to simulate varying rate
+            time.sleep(random.uniform(0.05, self.interval_s))
+
+    def stop(self) -> None:
+        self._stopped.set()

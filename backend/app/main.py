@@ -69,8 +69,8 @@ async def lifespan(app: FastAPI):
         universe = massive.get_top_volume_tickers(prior_date, n=settings.DASHBOARD_UNIVERSE_SIZE)
         print(f"[dashboard] universe ready: {len(universe)} tickers for prior_date={prior_date}", flush=True)
     except Exception as e:
-        print(f"[dashboard] universe init failed, falling back to empty: {e}", flush=True)
-        universe = []
+        universe = ["AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "META", "GOOGL", "AMD", "NFLX", "SPY"]
+        print(f"[dashboard] universe init failed or off-line, falling back to default universe: {universe} ({e})", flush=True)
 
     # -----------------------------------------------------------------------
     # Rules store — seed builtins on first run, then load from DB
@@ -116,17 +116,29 @@ async def lifespan(app: FastAPI):
     )
 
     # -----------------------------------------------------------------------
-    # WebSocket streamer — feeds engine; fired signals → dispatcher
+    # Ingestion Streamer (WebSocket live or Mock offline simulator)
     # -----------------------------------------------------------------------
     streamer = None
-    if universe and settings.MASSIVE_API_KEY:
-        streamer = DashboardStreamer(
-            settings.MASSIVE_API_KEY,
-            universe,
-            engine,
-            alert_callback=dispatcher.enqueue,
-        )
-        streamer.start()
+    if universe:
+        if settings.MASSIVE_API_KEY and not settings.SIMULATE_STREAM:
+            streamer = DashboardStreamer(
+                settings.MASSIVE_API_KEY,
+                universe,
+                engine,
+                alert_callback=dispatcher.enqueue,
+            )
+            streamer.start()
+            print("[streamer] Connected to live Massive WebSocket feed.", flush=True)
+        else:
+            from backend.app.services.stream import MockStreamer
+            streamer = MockStreamer(
+                universe,
+                engine,
+                alert_callback=dispatcher.enqueue,
+                interval_s=1.0,
+            )
+            streamer.start()
+            print("[streamer] Started offline simulation mode (MockStreamer).", flush=True)
         app.state.streamer = streamer
 
     # -----------------------------------------------------------------------

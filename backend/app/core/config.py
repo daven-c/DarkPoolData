@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     DASHBOARD_UNIVERSE_SIZE: int = 1000           # Top-N tickers by prior-day $ volume. Bigger = catches quieter names institutions accumulate. Env-tunable (1000-3000); ceiling is your Massive WS per-symbol subscription cap. Prior-day seeding cost scales linearly (background, non-blocking).
     DASHBOARD_SEED_PRIOR_DAY: bool = True         # Backfill prior-day TRF totals on startup
     DASHBOARD_WS_FEED: str = "delayed"            # "realtime" or "delayed" (must match your Massive plan)
+    SIMULATE_STREAM: bool = False                 # Force mock trade simulation (e.g. off-market or no API key)
 
     # Dashboard — aggregation rules
     DASHBOARD_TRF_EXCHANGE_ID: int = 4            # Exchange ID for FINRA TRF (off-exchange / dark pool)
