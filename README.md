@@ -252,6 +252,11 @@ DASHBOARD_UNIVERSE_SIZE=1000         # Top-N tickers by prior-day DP dollar volu
 DASHBOARD_WS_FEED=delayed            # "realtime" or "delayed" (match your plan tier)
 DASHBOARD_SEED_PRIOR_DAY=True        # Backfill % change on boot
 
+# Off-hours simulation (opt-in — drives the engine with a synthetic tape)
+SIMULATE_STREAM=False                # True → MockStreamer feeds fake trades; works with NO API key
+SIMULATE_STREAM_RATE=20              # Target synthetic trades/sec when SIMULATE_STREAM=True
+# SIMULATE_UNIVERSE defaults to 10 large-caps; override in .env as a JSON list if desired
+
 # Alerts (defaults shown)
 ALERTS_SSE_QUEUE_MAX=1000
 ALERTS_DEFAULT_COOLDOWN_S=300        # Per (rule, symbol) cooldown between signals
@@ -261,6 +266,8 @@ ALERTS_FORWARD_HORIZONS_MIN=[5,30,1440]  # Horizons stamped on persisted alerts
 > **Delayed feed note**: if your Massive plan is delayed-only, set `DASHBOARD_WS_FEED=delayed`. Using `realtime` on a delayed-only key authenticates but receives no ticks.
 
 > **No API key**: if `MASSIVE_API_KEY` is unset the backtest endpoints fall back to `MockDataProvider` automatically — all routes remain functional for UI testing.
+
+> **Testing the live engine when the market is closed**: set `SIMULATE_STREAM=True`. Instead of the Massive WebSocket, a `MockStreamer` drives the `RuleEngine` with a synthetic random-walk tape (with occasional block trades) over a fixed 10-ticker universe, so the full ingestion → condition-matching → alert pipeline runs end-to-end with no API key and no open market. This is **opt-in only** — a missing API key never silently switches to simulation, so real misconfigurations stay loud. The dashboard logs `SIMULATE_STREAM on — MockStreamer driving the engine (NOT live data)` on boot.
 
 ---
 

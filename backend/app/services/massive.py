@@ -179,9 +179,13 @@ class MassiveService:
         return out
 
     def get_last_price(self, ticker: str) -> Optional[float]:
-        """Return the most recent trade price for a ticker (for forward-return stamping)."""
-        client = self._get_client()
+        """Return the most recent trade price for a ticker (for forward-return stamping).
+
+        Returns None (rather than raising) when no API key is configured, so the
+        forward-return stamper stays quiet during off-hours simulation runs.
+        """
         try:
+            client = self._get_client()
             result = client.get_last_trade(ticker)
             r = getattr(result, "results", None)
             if r is None:
@@ -192,9 +196,12 @@ class MassiveService:
             return None
 
     def get_close_on_date(self, ticker: str, date_str: str) -> Optional[float]:
-        """Return closing price for a ticker on a specific date (for +1d stamping)."""
-        client = self._get_client()
+        """Return closing price for a ticker on a specific date (for +1d stamping).
+
+        Returns None (rather than raising) when no API key is configured.
+        """
         try:
+            client = self._get_client()
             bars = list(client.list_aggs(
                 ticker=ticker,
                 multiplier=1,

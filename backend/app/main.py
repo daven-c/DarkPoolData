@@ -25,7 +25,7 @@ from backend.app.services.dashboard_store import DashboardStore
 from backend.app.services.discord import discord_notifier
 from backend.app.services.massive import MassiveService
 from backend.app.services.rules_store import RulesStore
-from backend.app.services.stream import DashboardStreamer
+from backend.app.services.stream import DashboardStreamer, MockStreamer
 
 
 def _prior_trading_day(today: datetime) -> str:
@@ -65,12 +65,18 @@ async def lifespan(app: FastAPI):
     store = DashboardStore()
     prior_date = _prior_trading_day(datetime.now())
 
-    try:
-        universe = massive.get_top_volume_tickers(prior_date, n=settings.DASHBOARD_UNIVERSE_SIZE)
-        print(f"[dashboard] universe ready: {len(universe)} tickers for prior_date={prior_date}", flush=True)
-    except Exception as e:
-        print(f"[dashboard] universe init failed, falling back to empty: {e}", flush=True)
-        universe = []
+    if settings.SIMULATE_STREAM:
+        # Simulation mode uses a fixed universe so it works with no API key and
+        # behaves deterministically — never hit the live ranking endpoint.
+        universe = list(settings.SIMULATE_UNIVERSE)
+        print(f"[dashboard] SIMULATE_STREAM on — fixed simulation universe ({len(universe)} tickers)", flush=True)
+    else:
+        try:
+            universe = massive.get_top_volume_tickers(prior_date, n=settings.DASHBOARD_UNIVERSE_SIZE)
+            print(f"[dashboard] universe ready: {len(universe)} tickers for prior_date={prior_date}", flush=True)
+        except Exception as e:
+            print(f"[dashboard] universe init failed, falling back to empty: {e}", flush=True)
+            universe = []
 
     # -----------------------------------------------------------------------
     # Rules store — seed builtins on first run, then load from DB
@@ -116,10 +122,23 @@ async def lifespan(app: FastAPI):
     )
 
     # -----------------------------------------------------------------------
-    # WebSocket streamer — feeds engine; fired signals → dispatcher
+    # Ingestion streamer — feeds engine; fired signals → dispatcher.
+    # Three branches, in priority order:
+    #   1. SIMULATE_STREAM on  → MockStreamer (synthetic tape, off-hours/no key)
+    #   2. live key + universe → DashboardStreamer (real Massive WS feed)
+    #   3. otherwise           → no streamer; log loudly so the gap is obvious
     # -----------------------------------------------------------------------
     streamer = None
-    if universe and settings.MASSIVE_API_KEY:
+    if settings.SIMULATE_STREAM:
+        streamer = MockStreamer(
+            universe,
+            engine,
+            alert_callback=dispatcher.enqueue,
+            rate_per_sec=settings.SIMULATE_STREAM_RATE,
+        )
+        streamer.start()
+        print("[streamer] SIMULATE_STREAM on — MockStreamer driving the engine (NOT live data)", flush=True)
+    elif universe and settings.MASSIVE_API_KEY:
         streamer = DashboardStreamer(
             settings.MASSIVE_API_KEY,
             universe,
@@ -127,12 +146,20 @@ async def lifespan(app: FastAPI):
             alert_callback=dispatcher.enqueue,
         )
         streamer.start()
-        app.state.streamer = streamer
+        print(f"[streamer] connected to live Massive WS feed ({len(universe)} tickers)", flush=True)
+    else:
+        reason = "MASSIVE_API_KEY not set" if not settings.MASSIVE_API_KEY else "empty universe"
+        print(
+            f"[streamer] NOT STARTED ({reason}) — engine will receive no trades. "
+            f"Set SIMULATE_STREAM=true to drive it with synthetic data for off-hours testing.",
+            flush=True,
+        )
+    app.state.streamer = streamer
 
     # -----------------------------------------------------------------------
     # Prior-day totals (background thread — slow REST call)
     # -----------------------------------------------------------------------
-    if settings.DASHBOARD_SEED_PRIOR_DAY and universe:
+    if settings.DASHBOARD_SEED_PRIOR_DAY and universe and not settings.SIMULATE_STREAM:
         threading.Thread(
             target=_seed_prior_totals,
             args=(massive, store, engine, universe, prior_date),

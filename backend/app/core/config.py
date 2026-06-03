@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     DASHBOARD_SEED_PRIOR_DAY: bool = True         # Backfill prior-day TRF totals on startup
     DASHBOARD_WS_FEED: str = "delayed"            # "realtime" or "delayed" (must match your Massive plan)
 
+    # Off-hours simulation — opt-in synthetic tape so the engine can be exercised
+    # without a live market (testing, demos, CI). NEVER auto-enabled: when the API
+    # key is missing the live streamer simply doesn't start, so failures stay loud.
+    SIMULATE_STREAM: bool = False                 # Set True to drive the engine with a MockStreamer
+    SIMULATE_STREAM_RATE: float = 20.0            # Target synthetic trades/sec when SIMULATE_STREAM is on
+    SIMULATE_UNIVERSE: List[str] = [              # Fixed, deterministic universe used in simulation mode
+        "AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "META", "GOOGL", "AMD", "NFLX", "SPY",
+    ]
+
     # Dashboard — aggregation rules
     DASHBOARD_TRF_EXCHANGE_ID: int = 4            # Exchange ID for FINRA TRF (off-exchange / dark pool)
     DASHBOARD_BLOCK_SIZE_THRESHOLD: int = 10_000  # Shares per trade to count as a BLOCK TRADE
