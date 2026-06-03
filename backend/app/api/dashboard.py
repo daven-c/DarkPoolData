@@ -98,6 +98,19 @@ async def get_health(request: Request):
     ingest = engine.ingestion_stats()
     market = await get_market_status_cache().get()
 
+    # Boot + runtime diagnostics drive the frontend's degraded-state banner.
+    # We fold in last_event_ts and market_status so severity classification can
+    # account for "live feed silent during market hours" vs. legitimate quiet.
+    diagnostics = getattr(request.app.state, "diagnostics", None)
+    diag_payload = (
+        diagnostics.snapshot(
+            last_event_ts=ingest["last_event_ts"],
+            market_status=market.get("market"),
+        )
+        if diagnostics is not None
+        else None
+    )
+
     return {
         "tickers_tracked": len(engine.universe()),
         "active_tickers": active,
@@ -114,6 +127,8 @@ async def get_health(request: Request):
         "market_status": market.get("market", "unknown"),
         "market_status_checked_at": market.get("checked_at"),
         "market_server_time": market.get("server_time"),
+        # Startup + runtime diagnostics for the degraded-state banner
+        "diagnostics": diag_payload,
     }
 
 
