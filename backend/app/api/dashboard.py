@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from backend.app.core.config import settings
+from backend.app.services.market_status import get_default_cache as get_market_status_cache
 
 router = APIRouter()
 
@@ -75,7 +76,7 @@ async def stream(request: Request):
 
 
 @router.get("/health")
-def get_health(request: Request):
+async def get_health(request: Request):
     """Compact engine-health summary for the Signals Dashboard strip.
 
     Composed from cheap sources — no new engine counters:
@@ -83,6 +84,7 @@ def get_health(request: Request):
       - active_tickers:  universe rows that have logged at least one dark trade
       - signals_today / last_signal_ts: from the alert store
       - ws_feed: configured WS feed tier (delayed/realtime)
+      - market_status: upstream US-equities market state (cached, TTL in settings)
     """
     engine = request.app.state.engine
     rows = _build_rows(request)
@@ -94,6 +96,7 @@ def get_health(request: Request):
         health = alert_store.health()
 
     ingest = engine.ingestion_stats()
+    market = await get_market_status_cache().get()
 
     return {
         "tickers_tracked": len(engine.universe()),
@@ -107,6 +110,10 @@ def get_health(request: Request):
         "events_per_min": ingest["events_per_min"],
         "total_events": ingest["total_events"],
         "last_event_ts": ingest["last_event_ts"],
+        # Market status (cached upstream)
+        "market_status": market.get("market", "unknown"),
+        "market_status_checked_at": market.get("checked_at"),
+        "market_server_time": market.get("server_time"),
     }
 
 

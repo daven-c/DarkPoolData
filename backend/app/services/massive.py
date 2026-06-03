@@ -209,6 +209,42 @@ class MassiveService:
             print(f"[MassiveService] get_close_on_date({ticker}, {date_str}) failed: {e}")
         return None
 
+    def get_market_status(self) -> Dict[str, Any]:
+        """Return the upstream market-status snapshot.
+
+        Shape: {market, server_time, exchanges, currencies}. `market` is one of
+        "open" | "closed" | "extended-hours" (per Polygon's /v1/marketstatus/now).
+        Returns {"market": "unknown", ...} when the SDK call fails so callers
+        don't have to handle exceptions.
+        """
+        client = self._get_client()
+        try:
+            result = client.get_market_status()
+        except Exception as e:
+            print(f"[MassiveService] get_market_status failed: {e}")
+            return {"market": "unknown", "server_time": None, "exchanges": {}, "currencies": {}}
+
+        def _to_dict(obj: Any) -> Any:
+            if obj is None or isinstance(obj, (str, int, float, bool)):
+                return obj
+            if isinstance(obj, dict):
+                return {k: _to_dict(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_to_dict(v) for v in obj]
+            if hasattr(obj, "__dict__"):
+                return {k: _to_dict(v) for k, v in vars(obj).items() if not k.startswith("_")}
+            return str(obj)
+
+        data = _to_dict(result) if not isinstance(result, dict) else result
+        return {
+            "market": data.get("market", "unknown"),
+            "server_time": data.get("server_time") or data.get("serverTime"),
+            "exchanges": data.get("exchanges") or {},
+            "currencies": data.get("currencies") or {},
+            "early_hours": data.get("early_hours", data.get("earlyHours")),
+            "after_hours": data.get("after_hours", data.get("afterHours")),
+        }
+
     def get_daily_aggs(self, ticker: str, from_date: str, to_date: str) -> List[Dict[str, Any]]:
         """
         Fetches general daily bars.

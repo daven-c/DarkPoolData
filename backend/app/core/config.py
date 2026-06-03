@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Dashboard — streaming
     DASHBOARD_SSE_QUEUE_MAX: int = 1_000          # Per-subscriber backpressure queue; deltas dropped if full
 
+    # Market status — cache TTL for upstream get_market_status() call
+    MARKET_STATUS_CACHE_TTL_S: int = 60
+
     # Alerts — signal dispatch
     ALERTS_SSE_QUEUE_MAX: int = 1_000             # Per-subscriber backpressure queue for /alerts/stream
     ALERTS_DEFAULT_COOLDOWN_S: int = 300          # Default per-(rule,symbol) cooldown in seconds

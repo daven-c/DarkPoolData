@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Activity, Radio, Zap, Clock, Gauge, Database, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Activity, Radio, Zap, Clock, Gauge, Database, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus, CircleDot } from "lucide-react";
 
 const API_BASE = "http://localhost:8000/api/v1";
 
@@ -30,6 +30,16 @@ type Health = {
   events_per_min: number;
   total_events: number;
   last_event_ts: number | null;
+  market_status: "open" | "closed" | "extended-hours" | "unknown" | string;
+  market_status_checked_at: number | null;
+  market_server_time: string | null;
+};
+
+const MARKET_STATUS_DISPLAY: Record<string, { label: string; color: string }> = {
+  open:              { label: "Open",    color: "#34d399" },
+  "extended-hours":  { label: "Pre/Post", color: "#fbbf24" },
+  closed:            { label: "Closed",  color: "#94a3b8" },
+  unknown:           { label: "Unknown", color: "#f87171" },
 };
 type RecentSignal = {
   rule_name: string;
@@ -220,6 +230,14 @@ export default function SignalsDashboard() {
           value={health ? fmtTs(health.last_signal_ts) : "—"} />
         <HealthChip icon={<Gauge size={20} />} label="WS Feed"
           value={health ? health.ws_feed : "—"} color="#60a5fa" />
+        {(() => {
+          const status = health?.market_status ?? "unknown";
+          const display = MARKET_STATUS_DISPLAY[status] ?? MARKET_STATUS_DISPLAY.unknown;
+          return (
+            <HealthChip icon={<CircleDot size={20} />} label="Market"
+              value={health ? display.label : "—"} color={display.color} />
+          );
+        })()}
       </div>
 
       {/* Expandable tracked-tickers panel */}
