@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BarChart3, Eye, FlaskConical, Plus, Save, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import RuleBacktest from "./RuleBacktest";
 
-const API_BASE = "http://localhost:8000/api/v1";
+import { API_BASE } from "./api";
 
 type MetricSpec = {
   key: string;

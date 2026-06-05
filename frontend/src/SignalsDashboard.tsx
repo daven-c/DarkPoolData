@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Activity, Radio, Zap, Clock, Gauge, Database, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus, CircleDot, AlertTriangle, AlertCircle, Info } from "lucide-react";
+import { API_BASE } from "./api";
 
-const API_BASE = "http://localhost:8000/api/v1";
 
 // ---------------------------------------------------------------------------
 // Types

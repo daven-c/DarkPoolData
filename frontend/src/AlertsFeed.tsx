@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Activity, Clock, Filter, Minus, TrendingDown, TrendingUp } from "lucide-react";
 
-const API_BASE = "http://localhost:8000/api/v1";
+import { API_BASE } from "./api";
+
 const MAX_LIVE = 100;
 
 type Signal = {

@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 
-const API_BASE = "http://localhost:8000/api/v1";
+import { API_BASE } from "./api";
 
 type RuleRow = { id: string; name: string; enabled: boolean };
 type HorizonStat = {
@@ -239,6 +239,14 @@ export default function RuleBacktest({ initialRuleId }: { initialRuleId?: string
             <div className="glass-panel" style={{ padding: 16, borderColor: "rgba(239,68,68,0.3)", display: "flex", gap: 10, alignItems: "center" }}>
               <AlertTriangle color="#ef4444" size={18} />
               <span style={{ color: "#f87171", fontSize: "0.88rem" }}>{error}</span>
+            </div>
+          )}
+
+          {result?.warning && (
+            <div className="glass-panel" style={{ padding: 14, borderColor: "rgba(251,191,36,0.3)",
+              background: "rgba(251,191,36,0.06)", display: "flex", gap: 10, alignItems: "center" }}>
+              <AlertTriangle color="#fbbf24" size={16} />
+              <span style={{ color: "#fcd34d", fontSize: "0.85rem" }}>{result.warning}</span>
             </div>
           )}
 
