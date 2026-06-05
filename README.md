@@ -4,6 +4,168 @@ An institutional-grade platform to ingest, explore, backtest, and alert on off-e
 
 **Current design (v2 — Managed Signals):** a central `RuleEngine` evaluates composable condition trees against every incoming TRF trade. When a rule fires it broadcasts a `Signal` to an in-app SSE feed, a Discord channel, and a SQLite history table. Each persisted alert is later stamped with +5m/+30m/+1d forward returns so signal quality is measurable. Admins compose and iterate rules in a Strategy Lab UI; rule-based backtests are a **signal validator** — they replay historical TRF trades through a fresh engine and answer "did the signal predict the move?" via forward-return hit rates and a price chart with bull/bear markers (no portfolio P&L simulation).
 
+> **New here?** Jump to the [Beginner Setup Guide](#-beginner-setup-guide-non-technical-users) below for a click-by-click walkthrough that assumes no prior coding experience. Developers can skip ahead to [Prerequisites & Setup](#️-prerequisites--setup).
+
+---
+
+## 🧑‍🌾 Beginner Setup Guide (Non-Technical Users)
+
+This walkthrough assumes **zero programming experience**. Allow ~30 minutes for the first run. You'll need a computer (macOS, Windows, or Linux), an internet connection, and a free Massive.com / Polygon.io account.
+
+The platform is two programs that talk to each other: a **backend** (data engine, runs in the background) and a **frontend** (the web dashboard you'll look at). You'll start each in its own terminal window, then open the dashboard in your browser.
+
+### Step 1 — Install the three tools you'll need
+
+Each is free and only installed once.
+
+**1a. Python 3.10 or newer** — the language the backend is written in.
+- **macOS**: open the **Terminal** app (press `Cmd+Space`, type `Terminal`, hit Enter). Type `python3 --version` and press Enter. If you see `Python 3.10.x` or higher, you're done. Otherwise download the installer from https://www.python.org/downloads/ and run it.
+- **Windows**: open **Command Prompt** (press the Windows key, type `cmd`, hit Enter). Type `python --version`. If missing or too old, install from https://www.python.org/downloads/ and **make sure to check the box "Add python.exe to PATH"** on the first install screen.
+- **Linux**: open a terminal and run `python3 --version`. Most distributions already include Python 3.10+.
+
+**1b. Node.js 18 or newer** — runs the web dashboard.
+- All platforms: download the **LTS** installer from https://nodejs.org/ and click through with the default options.
+- Confirm by opening a **new** terminal window and running `node --version`.
+
+**1c. Git** — downloads the project code.
+- **macOS**: Terminal will offer to install Xcode Command Line Tools the first time you run `git --version`. Accept it.
+- **Windows**: install from https://git-scm.com/download/win (defaults are fine).
+- **Linux**: `sudo apt install git` on Debian/Ubuntu, or use your distro's package manager.
+
+### Step 2 — Download the project
+
+Open a terminal, navigate to wherever you keep projects (your home folder is fine), and run:
+
+```bash
+git clone https://github.com/daven-c/DarkPoolData.git
+cd DarkPoolData
+```
+
+If `git clone` fails, alternative: click the green **Code** button on the GitHub page → **Download ZIP** → unzip it → open a terminal inside the unzipped folder.
+
+### Step 3 — Get a Massive.com / Polygon.io API key
+
+The platform reads market data through Massive.com (formerly Polygon.io).
+
+1. Go to https://polygon.io/ and click **Sign up**.
+2. The free **Basic** tier is enough to try everything with 15-minute-delayed data.
+3. After signing in, open **Dashboard → API Keys** and copy your key.
+
+Keep the key visible — you'll paste it in the next step.
+
+### Step 4 — Create a settings file (`.env`)
+
+The backend reads its secrets from a file called `.env` (with the leading dot, no extension) at the project root.
+
+1. Inside the `DarkPoolData` folder, create a new plain-text file named exactly `.env`.
+   - On macOS/Linux: `nano .env` (or use VS Code, TextEdit, etc.).
+   - On Windows: open Notepad → File → Save As → set filename to `.env`, **change "Save as type" to "All Files"**, and save inside the `DarkPoolData` folder. Otherwise Notepad adds a hidden `.txt`.
+2. Paste this in:
+
+```env
+MASSIVE_API_KEY=paste_your_key_here
+DASHBOARD_WS_FEED=delayed
+```
+
+3. Replace `paste_your_key_here` with the key you copied. Save.
+
+`delayed` matches the free Polygon plan. If you ever upgrade to a real-time plan, change it to `realtime`.
+
+### Step 5 — Install the backend (one-time)
+
+In the terminal, inside the `DarkPoolData` folder:
+
+**macOS / Linux:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Windows (Command Prompt):**
+```cmd
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**Windows (PowerShell):**
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+The `pip install` step downloads a handful of packages — give it 1–3 minutes. When it's done, your terminal prompt should be prefixed with `(.venv)` — that just means Python is using this project's isolated packages.
+
+> If PowerShell blocks the activate script with a "scripts disabled" error, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, answer Yes, then retry.
+
+### Step 6 — Install the frontend (one-time)
+
+In the same terminal:
+
+```bash
+npm install --prefix frontend
+```
+
+Another 1–3 minutes. Ignore any yellow `npm warn` messages — only red `npm error` lines matter.
+
+### Step 7 — Start the backend
+
+Still in that terminal (the one with `(.venv)` in the prompt):
+
+```bash
+python3 backend/app/main.py
+```
+
+On Windows, use `python` instead of `python3`. You'll see log lines as the engine starts and connects to Massive. **Leave this window open and running.** When you see `Uvicorn running on http://0.0.0.0:8000`, the backend is ready.
+
+### Step 8 — Start the frontend (in a second terminal)
+
+Open a **new** terminal window or tab (don't close the first one). Navigate back into the project:
+
+```bash
+cd DarkPoolData
+npm run dev --prefix frontend
+```
+
+Within a few seconds you'll see a line like:
+```
+  ➜  Local:   http://localhost:5173/
+```
+
+Click that link (or copy it into your browser). You'll see the **Signals Dashboard** with live engine-health chips, a tracked-universe panel, and a rules table.
+
+### Step 9 — (Optional) Discord notifications
+
+Skip this unless you specifically want signals pushed to a Discord server. Alerts still appear in the web dashboard either way. If you want them, see the Discord configuration block in [Environment Variables](#2-environment-variables-env) below and run `python3 bot/bot.py` in a third terminal.
+
+### Stopping and restarting later
+
+- **To stop**: press `Ctrl+C` in each terminal window.
+- **To restart on another day**: open two terminals, `cd` into `DarkPoolData` in each, then:
+  - Terminal 1: activate the venv (`source .venv/bin/activate` on macOS/Linux, `.venv\Scripts\activate` on Windows), then `python3 backend/app/main.py`.
+  - Terminal 2: `npm run dev --prefix frontend`.
+
+You **do not** need to repeat Steps 5 or 6 unless you pulled new code that changed `requirements.txt` or `frontend/package.json`.
+
+### Troubleshooting
+
+| Symptom | What to try |
+|---------|-------------|
+| `python3: command not found` (Windows) | Use `python` instead. If that also fails, reinstall Python and check the "Add python.exe to PATH" box. |
+| `pip: command not found` | Run `python3 -m pip install -r requirements.txt` instead. |
+| `npm: command not found` | Node.js isn't installed or isn't on your PATH. Reinstall from https://nodejs.org/ and open a brand-new terminal. |
+| Backend exits with *"Massive.com API key is not configured"* | The `.env` file is missing or in the wrong place. It must be at the project root (same folder as `requirements.txt`) and the line must read exactly `MASSIVE_API_KEY=...`. |
+| Backend connects but dashboard stays empty all day | Your Polygon plan is delayed-only but `DASHBOARD_WS_FEED=realtime` is set. Change it to `delayed` in `.env` and restart. |
+| Browser says *"This site can't be reached"* | The backend (Step 7) or frontend (Step 8) terminal isn't running anymore. Both must stay open. |
+| `Port 8000 already in use` | Another program is holding the port. Quit it, or add `PORT=8001` to `.env` and use http://localhost:8001 in the browser. |
+| `Port 5173 already in use` | Run `npm run dev --prefix frontend -- --port 5174` and use the new URL. |
+| Notepad saved `.env.txt` instead of `.env` | In Notepad's Save As dialog, set "Save as type" to **All Files**, then re-save as `.env`. Or rename the file in File Explorer (you may need to enable "File name extensions" in the View menu first). |
+| PowerShell blocks `.venv\Scripts\Activate.ps1` | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, answer Yes, retry. |
+
+If you hit something not on this list, scroll the failing terminal back to the **first** red error line — that's usually the real problem — and search it on Google with "DarkPoolData" appended.
+
 ---
 
 ## 📂 Project Architecture
@@ -90,6 +252,11 @@ DASHBOARD_UNIVERSE_SIZE=1000         # Top-N tickers by prior-day DP dollar volu
 DASHBOARD_WS_FEED=delayed            # "realtime" or "delayed" (match your plan tier)
 DASHBOARD_SEED_PRIOR_DAY=True        # Backfill % change on boot
 
+# Off-hours simulation (opt-in — drives the engine with a synthetic tape)
+SIMULATE_STREAM=False                # True → MockStreamer feeds fake trades; works with NO API key
+SIMULATE_STREAM_RATE=20              # Target synthetic trades/sec when SIMULATE_STREAM=True
+# SIMULATE_UNIVERSE defaults to 10 large-caps; override in .env as a JSON list if desired
+
 # Alerts (defaults shown)
 ALERTS_SSE_QUEUE_MAX=1000
 ALERTS_DEFAULT_COOLDOWN_S=300        # Per (rule, symbol) cooldown between signals
@@ -99,6 +266,10 @@ ALERTS_FORWARD_HORIZONS_MIN=[5,30,1440]  # Horizons stamped on persisted alerts
 > **Delayed feed note**: if your Massive plan is delayed-only, set `DASHBOARD_WS_FEED=delayed`. Using `realtime` on a delayed-only key authenticates but receives no ticks.
 
 > **No API key**: if `MASSIVE_API_KEY` is unset the backtest endpoints fall back to `MockDataProvider` automatically — all routes remain functional for UI testing.
+
+> **Testing the live engine when the market is closed**: set `SIMULATE_STREAM=True`. Instead of the Massive WebSocket, a `MockStreamer` drives the `RuleEngine` with a synthetic random-walk tape (with occasional block trades) over a fixed 10-ticker universe, so the full ingestion → condition-matching → alert pipeline runs end-to-end with no API key and no open market. This is **opt-in only** — a missing API key never silently switches to simulation, so real misconfigurations stay loud. The dashboard logs `SIMULATE_STREAM on — MockStreamer driving the engine (NOT live data)` on boot.
+
+> **Frontend backend URL**: every API call reads from `import.meta.env.VITE_API_BASE` (see `frontend/.env.example`). Defaults to `http://localhost:8000/api/v1` for dev. Set this in `frontend/.env.local` for local overrides or in your deploy environment (Vercel/Netlify project settings) for production. Sibling vars: `VITE_BACKEND_ROOT` (root health probe) and `VITE_DISCORD_WEBHOOK_URL`.
 
 ---
 
@@ -145,7 +316,8 @@ marimo edit notebooks/darkpool_exploration.py
 | `GET` | `/dashboard/snapshot` | Live universe snapshot (sortable, paginated) |
 | `GET` | `/dashboard/stream` | SSE — per-trade `TickerState` deltas |
 | `GET` | `/dashboard/universe` | Active ticker list |
-| `GET` | `/dashboard/health` | Engine-health strip: tickers tracked/active, signals today, last-signal ts, feed tier |
+| `GET` | `/dashboard/health` | Engine-health strip: tickers tracked/active, signals today, last-signal ts, feed tier, market status, boot diagnostics |
+| `GET` | `/dashboard/trading-day?date=YYYY-MM-DD` | Returns `{is_trading_day, next_trading_day}` so the UI can warn on weekend/holiday picks |
 | `GET` | `/darkpool/summary` | Single-symbol TRF aggregates for a date |
 | `GET` | `/darkpool/trades` | Raw TRF tick log for a symbol/date |
 | `POST` | `/backtest/rules` | Signal-validator backtest → `{signals, signal_count, forward_return_stats, price_series}` |

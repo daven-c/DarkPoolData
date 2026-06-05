@@ -22,10 +22,11 @@ from backend.app.core.config import settings
 from backend.app.rules import RuleEngine
 from backend.app.services.alerts import AlertDispatcher, AlertStore, forward_return_stamper
 from backend.app.services.dashboard_store import DashboardStore
+from backend.app.services.diagnostics import Diagnostics
 from backend.app.services.discord import discord_notifier
 from backend.app.services.massive import MassiveService
 from backend.app.services.rules_store import RulesStore
-from backend.app.services.stream import DashboardStreamer
+from backend.app.services.stream import DashboardStreamer, MockStreamer
 
 
 def _prior_trading_day(today: datetime) -> str:
@@ -41,22 +42,30 @@ def _seed_prior_totals(
     engine: RuleEngine,
     universe: list,
     date_str: str,
+    diagnostics: Diagnostics,
 ) -> None:
     """Fetch prior-day dark-pool totals and seed them into the engine's TickerState."""
-    cached = store.get_totals(date_str, universe)
-    missing = [t for t in universe if t not in cached]
-    for sym, total in cached.items():
-        engine.set_prior_total(sym, total)
-    if not missing:
-        print(f"[dashboard] prior-day totals served from cache for {date_str}", flush=True)
-        return
-    print(f"[dashboard] seeding {len(missing)} prior-day totals for {date_str}...", flush=True)
-    fresh = massive.get_prior_day_dark_totals(missing, date_str)
-    if fresh:
-        store.upsert_totals(date_str, fresh)
-        for sym, total in fresh.items():
+    try:
+        cached = store.get_totals(date_str, universe)
+        missing = [t for t in universe if t not in cached]
+        for sym, total in cached.items():
             engine.set_prior_total(sym, total)
-    print(f"[dashboard] prior-day seed complete ({len(cached) + len(fresh)} tickers)", flush=True)
+        if not missing:
+            print(f"[dashboard] prior-day totals served from cache for {date_str}", flush=True)
+            diagnostics.set(prior_day_seed="complete")
+            return
+        print(f"[dashboard] seeding {len(missing)} prior-day totals for {date_str}...", flush=True)
+        fresh = massive.get_prior_day_dark_totals(missing, date_str)
+        if fresh:
+            store.upsert_totals(date_str, fresh)
+            for sym, total in fresh.items():
+                engine.set_prior_total(sym, total)
+        print(f"[dashboard] prior-day seed complete ({len(cached) + len(fresh)} tickers)", flush=True)
+        diagnostics.set(prior_day_seed="complete")
+    except Exception as e:
+        print(f"[dashboard] prior-day seed failed: {e}", flush=True)
+        diagnostics.set(prior_day_seed="failed")
+        diagnostics.add_warning(f"Prior-day backfill failed: {e}. Daily-change percentages will be missing.")
 
 
 @asynccontextmanager
@@ -65,12 +74,26 @@ async def lifespan(app: FastAPI):
     store = DashboardStore()
     prior_date = _prior_trading_day(datetime.now())
 
-    try:
-        universe = massive.get_top_volume_tickers(prior_date, n=settings.DASHBOARD_UNIVERSE_SIZE)
-        print(f"[dashboard] universe ready: {len(universe)} tickers for prior_date={prior_date}", flush=True)
-    except Exception as e:
-        print(f"[dashboard] universe init failed, falling back to empty: {e}", flush=True)
-        universe = []
+    diagnostics = Diagnostics()
+    diagnostics.set(api_key_configured=bool(settings.MASSIVE_API_KEY))
+    app.state.diagnostics = diagnostics
+
+    if settings.SIMULATE_STREAM:
+        # Simulation mode uses a fixed universe so it works with no API key and
+        # behaves deterministically — never hit the live ranking endpoint.
+        universe = list(settings.SIMULATE_UNIVERSE)
+        print(f"[dashboard] SIMULATE_STREAM on — fixed simulation universe ({len(universe)} tickers)", flush=True)
+        diagnostics.set(universe_source="simulate", universe_size=len(universe))
+    else:
+        try:
+            universe = massive.get_top_volume_tickers(prior_date, n=settings.DASHBOARD_UNIVERSE_SIZE)
+            print(f"[dashboard] universe ready: {len(universe)} tickers for prior_date={prior_date}", flush=True)
+            diagnostics.set(universe_source="live", universe_size=len(universe))
+        except Exception as e:
+            print(f"[dashboard] universe init failed, falling back to empty: {e}", flush=True)
+            universe = []
+            diagnostics.set(universe_source="empty", universe_size=0)
+            diagnostics.add_warning(f"Universe ranking failed at boot: {e}. Dashboard will be empty until restart.")
 
     # -----------------------------------------------------------------------
     # Rules store — seed builtins on first run, then load from DB
@@ -116,10 +139,24 @@ async def lifespan(app: FastAPI):
     )
 
     # -----------------------------------------------------------------------
-    # WebSocket streamer — feeds engine; fired signals → dispatcher
+    # Ingestion streamer — feeds engine; fired signals → dispatcher.
+    # Three branches, in priority order:
+    #   1. SIMULATE_STREAM on  → MockStreamer (synthetic tape, off-hours/no key)
+    #   2. live key + universe → DashboardStreamer (real Massive WS feed)
+    #   3. otherwise           → no streamer; log loudly so the gap is obvious
     # -----------------------------------------------------------------------
     streamer = None
-    if universe and settings.MASSIVE_API_KEY:
+    if settings.SIMULATE_STREAM:
+        streamer = MockStreamer(
+            universe,
+            engine,
+            alert_callback=dispatcher.enqueue,
+            rate_per_sec=settings.SIMULATE_STREAM_RATE,
+        )
+        streamer.start()
+        print("[streamer] SIMULATE_STREAM on — MockStreamer driving the engine (NOT live data)", flush=True)
+        diagnostics.set(mode="simulate")
+    elif universe and settings.MASSIVE_API_KEY:
         streamer = DashboardStreamer(
             settings.MASSIVE_API_KEY,
             universe,
@@ -127,15 +164,27 @@ async def lifespan(app: FastAPI):
             alert_callback=dispatcher.enqueue,
         )
         streamer.start()
-        app.state.streamer = streamer
+        print(f"[streamer] connected to live Massive WS feed ({len(universe)} tickers)", flush=True)
+        diagnostics.set(mode="live")
+    else:
+        reason = "MASSIVE_API_KEY not set" if not settings.MASSIVE_API_KEY else "empty universe"
+        print(
+            f"[streamer] NOT STARTED ({reason}) — engine will receive no trades. "
+            f"Set SIMULATE_STREAM=true to drive it with synthetic data for off-hours testing.",
+            flush=True,
+        )
+        diagnostics.set(mode="off")
+        diagnostics.add_warning(f"Streamer not started ({reason}).")
+    app.state.streamer = streamer
 
     # -----------------------------------------------------------------------
     # Prior-day totals (background thread — slow REST call)
     # -----------------------------------------------------------------------
-    if settings.DASHBOARD_SEED_PRIOR_DAY and universe:
+    if settings.DASHBOARD_SEED_PRIOR_DAY and universe and not settings.SIMULATE_STREAM:
+        diagnostics.set(prior_day_seed="pending")
         threading.Thread(
             target=_seed_prior_totals,
-            args=(massive, store, engine, universe, prior_date),
+            args=(massive, store, engine, universe, prior_date, diagnostics),
             name="dashboard-seed",
             daemon=True,
         ).start()

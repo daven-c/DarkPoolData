@@ -179,9 +179,13 @@ class MassiveService:
         return out
 
     def get_last_price(self, ticker: str) -> Optional[float]:
-        """Return the most recent trade price for a ticker (for forward-return stamping)."""
-        client = self._get_client()
+        """Return the most recent trade price for a ticker (for forward-return stamping).
+
+        Returns None (rather than raising) when no API key is configured, so the
+        forward-return stamper stays quiet during off-hours simulation runs.
+        """
         try:
+            client = self._get_client()
             result = client.get_last_trade(ticker)
             r = getattr(result, "results", None)
             if r is None:
@@ -192,9 +196,12 @@ class MassiveService:
             return None
 
     def get_close_on_date(self, ticker: str, date_str: str) -> Optional[float]:
-        """Return closing price for a ticker on a specific date (for +1d stamping)."""
-        client = self._get_client()
+        """Return closing price for a ticker on a specific date (for +1d stamping).
+
+        Returns None (rather than raising) when no API key is configured.
+        """
         try:
+            client = self._get_client()
             bars = list(client.list_aggs(
                 ticker=ticker,
                 multiplier=1,
@@ -208,6 +215,42 @@ class MassiveService:
         except Exception as e:
             print(f"[MassiveService] get_close_on_date({ticker}, {date_str}) failed: {e}")
         return None
+
+    def get_market_status(self) -> Dict[str, Any]:
+        """Return the upstream market-status snapshot.
+
+        Shape: {market, server_time, exchanges, currencies}. `market` is one of
+        "open" | "closed" | "extended-hours" (per Polygon's /v1/marketstatus/now).
+        Returns {"market": "unknown", ...} when the SDK call fails so callers
+        don't have to handle exceptions.
+        """
+        client = self._get_client()
+        try:
+            result = client.get_market_status()
+        except Exception as e:
+            print(f"[MassiveService] get_market_status failed: {e}")
+            return {"market": "unknown", "server_time": None, "exchanges": {}, "currencies": {}}
+
+        def _to_dict(obj: Any) -> Any:
+            if obj is None or isinstance(obj, (str, int, float, bool)):
+                return obj
+            if isinstance(obj, dict):
+                return {k: _to_dict(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_to_dict(v) for v in obj]
+            if hasattr(obj, "__dict__"):
+                return {k: _to_dict(v) for k, v in vars(obj).items() if not k.startswith("_")}
+            return str(obj)
+
+        data = _to_dict(result) if not isinstance(result, dict) else result
+        return {
+            "market": data.get("market", "unknown"),
+            "server_time": data.get("server_time") or data.get("serverTime"),
+            "exchanges": data.get("exchanges") or {},
+            "currencies": data.get("currencies") or {},
+            "early_hours": data.get("early_hours", data.get("earlyHours")),
+            "after_hours": data.get("after_hours", data.get("afterHours")),
+        }
 
     def get_daily_aggs(self, ticker: str, from_date: str, to_date: str) -> List[Dict[str, Any]]:
         """

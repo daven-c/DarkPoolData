@@ -10,6 +10,7 @@ import SignalsDashboard from "./SignalsDashboard";
 import StockExplorer from "./StockExplorer";
 import AlertsFeed from "./AlertsFeed";
 import StrategyLab from "./StrategyLab";
+import { BACKEND_ROOT } from "./api";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "alerts" | "strategy" | "scanner">("dashboard");
@@ -17,7 +18,7 @@ export default function App() {
 
   // Check backend health on mount
   useEffect(() => {
-    fetch("http://localhost:8000/")
+    fetch(`${BACKEND_ROOT}/`)
       .then((res) => res.json())
       .then((data) => setBackendStatus(data.status === "online" ? "online" : "offline"))
       .catch(() => setBackendStatus("offline"));

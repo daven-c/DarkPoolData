@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AlertTriangle, TrendingUp, TrendingDown, Minus, History } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -8,7 +8,7 @@ import {
   Pie,
 } from "recharts";
 
-const API_BASE = "http://localhost:8000/api/v1";
+import { API_BASE, DISCORD_WEBHOOK_URL } from "./api";
 
 // ---------------------------------------------------------------------------
 // Small presentational helpers (mirrors AlertsFeed.tsx)
@@ -62,9 +62,32 @@ export default function StockExplorer() {
   const [ruleHits, setRuleHits] = useState<RuleHit[]>([]);
   const [hitsLoading, setHitsLoading] = useState(false);
 
+  // Probe whether the selected date is a US trading day so we can warn the
+  // user before they hit "Explore" and get an empty-looking result.
+  const [calendarWarning, setCalendarWarning] = useState<{ message: string; suggested: string } | null>(null);
+  useEffect(() => {
+    if (!scanDate) { setCalendarWarning(null); return; }
+    let cancelled = false;
+    fetch(`${API_BASE}/dashboard/trading-day?date=${scanDate}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        if (d.is_trading_day === false && d.next_trading_day) {
+          setCalendarWarning({
+            message: `${scanDate} is not a US trading day (weekend or market holiday). No TRF trades exist for that date.`,
+            suggested: d.next_trading_day,
+          });
+        } else {
+          setCalendarWarning(null);
+        }
+      })
+      .catch(() => setCalendarWarning(null));
+    return () => { cancelled = true; };
+  }, [scanDate]);
+
   const sendDiscordAlert = async (msg: string) => {
     try {
-      await fetch("http://localhost:5000/alert", {
+      await fetch(DISCORD_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: msg }),
@@ -136,6 +159,21 @@ export default function StockExplorer() {
             {scanLoading ? "Analyzing..." : "Explore Symbol"}
           </button>
         </form>
+        {calendarWarning && (
+          <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8,
+            background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)",
+            display: "flex", alignItems: "center", gap: 10, fontSize: "0.85rem", color: "#fcd34d" }}>
+            <AlertTriangle size={16} />
+            <span style={{ flex: 1 }}>{calendarWarning.message}</span>
+            <button type="button"
+              onClick={() => setScanDate(calendarWarning.suggested)}
+              style={{ background: "transparent", border: "1px solid rgba(251,191,36,0.4)", color: "#fcd34d",
+                padding: "4px 10px", borderRadius: 6, cursor: "pointer", fontSize: "0.8rem" }}
+            >
+              Use {calendarWarning.suggested}
+            </button>
+          </div>
+        )}
       </div>
 
       {scanError && (

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Activity, Radio, Zap, Clock, Gauge, Database, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Activity, Radio, Zap, Clock, Gauge, Database, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus, CircleDot, AlertTriangle, AlertCircle, Info } from "lucide-react";
+import { API_BASE } from "./api";
 
-const API_BASE = "http://localhost:8000/api/v1";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +30,31 @@ type Health = {
   events_per_min: number;
   total_events: number;
   last_event_ts: number | null;
+  market_status: "open" | "closed" | "extended-hours" | "unknown" | string;
+  market_status_checked_at: number | null;
+  market_server_time: string | null;
+  diagnostics: Diagnostics | null;
+};
+
+type Diagnostics = {
+  mode: "live" | "simulate" | "off" | string;
+  api_key_configured: boolean;
+  universe_size: number;
+  universe_source: "live" | "simulate" | "empty" | string;
+  prior_day_seed: "pending" | "complete" | "failed" | "skipped" | string;
+  boot_warnings: string[];
+  started_at: number;
+  seconds_since_last_event: number | null;
+  first_event_received: boolean;
+  severity: "ok" | "warn" | "error" | string;
+  message: string;
+};
+
+const MARKET_STATUS_DISPLAY: Record<string, { label: string; color: string }> = {
+  open:              { label: "Open",    color: "#34d399" },
+  "extended-hours":  { label: "Pre/Post", color: "#fbbf24" },
+  closed:            { label: "Closed",  color: "#94a3b8" },
+  unknown:           { label: "Unknown", color: "#f87171" },
 };
 type RecentSignal = {
   rule_name: string;
@@ -111,6 +136,58 @@ function HealthChip({ icon, label, value, color, onClick, expanded }: {
         <div style={{ fontSize: "1.25rem", fontWeight: 700, fontFamily: "var(--font-display)", color: color ?? "inherit" }}>{value}</div>
       </div>
       {onClick && (expanded ? <ChevronDown size={16} color="hsl(var(--text-muted))" /> : <ChevronRight size={16} color="hsl(var(--text-muted))" />)}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Degraded-state banner
+// ---------------------------------------------------------------------------
+function DiagnosticsBanner({ diag }: { diag: Diagnostics | null }) {
+  // Hide entirely on healthy state — the chips already convey green status.
+  if (!diag || diag.severity === "ok") return null;
+
+  const palette: Record<string, { bg: string; border: string; color: string; icon: React.ReactNode; label: string }> = {
+    error: {
+      bg: "rgba(239,68,68,0.10)", border: "rgba(239,68,68,0.35)", color: "#fca5a5",
+      icon: <AlertCircle size={18} />, label: "Engine degraded",
+    },
+    warn: {
+      bg: "rgba(251,191,36,0.08)", border: "rgba(251,191,36,0.3)", color: "#fcd34d",
+      icon: <AlertTriangle size={18} />, label: "Heads up",
+    },
+  };
+  const c = palette[diag.severity] ?? palette.warn;
+
+  // Surface secondary boot warnings only when the primary message isn't already one of them.
+  const extras = (diag.boot_warnings ?? []).filter(w => w !== diag.message);
+
+  return (
+    <div className="glass-panel"
+      style={{ padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12,
+        background: c.bg, border: `1px solid ${c.border}`, color: c.color }}>
+      <div style={{ marginTop: 2 }}>{c.icon}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8 }}>
+          {c.label}
+        </div>
+        <div style={{ fontSize: "0.92rem", fontWeight: 600, marginTop: 2 }}>{diag.message}</div>
+        {extras.length > 0 && (
+          <ul style={{ marginTop: 6, paddingLeft: 18, fontSize: "0.78rem", opacity: 0.85 }}>
+            {extras.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+        )}
+        <div style={{ marginTop: 6, fontSize: "0.7rem", opacity: 0.65, display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <span><Info size={10} style={{ verticalAlign: "middle" }} /> mode: <code>{diag.mode}</code></span>
+          <span>universe: {diag.universe_size} ({diag.universe_source})</span>
+          <span>seed: {diag.prior_day_seed}</span>
+          {diag.seconds_since_last_event !== null && (
+            <span>last event: {diag.seconds_since_last_event < 60
+              ? `${diag.seconds_since_last_event.toFixed(0)}s ago`
+              : `${Math.floor(diag.seconds_since_last_event / 60)}m ago`}</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -203,6 +280,9 @@ export default function SignalsDashboard() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
+      {/* Degraded-state banner (renders only when not healthy) */}
+      <DiagnosticsBanner diag={health?.diagnostics ?? null} />
+
       {/* Engine-health strip */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <HealthChip icon={<Radio size={20} />} label="Tickers Tracked"
@@ -220,6 +300,14 @@ export default function SignalsDashboard() {
           value={health ? fmtTs(health.last_signal_ts) : "—"} />
         <HealthChip icon={<Gauge size={20} />} label="WS Feed"
           value={health ? health.ws_feed : "—"} color="#60a5fa" />
+        {(() => {
+          const status = health?.market_status ?? "unknown";
+          const display = MARKET_STATUS_DISPLAY[status] ?? MARKET_STATUS_DISPLAY.unknown;
+          return (
+            <HealthChip icon={<CircleDot size={20} />} label="Market"
+              value={health ? display.label : "—"} color={display.color} />
+          );
+        })()}
       </div>
 
       {/* Expandable tracked-tickers panel */}
