@@ -30,6 +30,7 @@ from typing import AsyncIterator, List, Optional, Tuple
 from backend.app.core.config import settings
 from backend.app.rules.rule import Signal
 from backend.app.services.discord import DiscordNotifier
+from backend.app.services.trading_calendar import is_rth
 
 # ---------------------------------------------------------------------------
 # SQLite schema
@@ -441,6 +442,13 @@ async def forward_return_stamper(
                     if signal_price <= 0:
                         continue
                     symbol = row["symbol"]
+
+                    # Intraday horizons: only stamp if the target moment lands
+                    # inside regular trading hours. Otherwise get_last_price()
+                    # returns a stale prior-session close and pollutes hit-rate
+                    # stats. Row stays NULL so it can be retried/marked later.
+                    if h_min != 1440 and not is_rth(row["ts"] + horizon_s):
+                        continue
 
                     # Fetch forward price
                     if h_min == 1440:

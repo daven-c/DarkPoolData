@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.app.core.config import settings
 from backend.app.services.market_status import get_default_cache as get_market_status_cache
+from backend.app.services.trading_calendar import is_trading_day, next_trading_day
 
 router = APIRouter()
 
@@ -129,6 +130,24 @@ async def get_health(request: Request):
         "market_server_time": market.get("server_time"),
         # Startup + runtime diagnostics for the degraded-state banner
         "diagnostics": diag_payload,
+    }
+
+
+@router.get("/trading-day")
+def check_trading_day(date: str = Query(..., description="YYYY-MM-DD")):
+    """Tell the UI whether `date` is a US trading day; suggest the next one if not.
+
+    Cheap, no auth, no upstream calls — used by the Stock Explorer's date picker
+    to disambiguate "no rules fired" from "you picked a Saturday".
+    """
+    try:
+        trading = is_trading_day(date)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid date (expected YYYY-MM-DD): {exc}")
+    return {
+        "date": date,
+        "is_trading_day": trading,
+        "next_trading_day": None if trading else next_trading_day(date).isoformat(),
     }
 
 

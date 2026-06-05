@@ -269,6 +269,8 @@ ALERTS_FORWARD_HORIZONS_MIN=[5,30,1440]  # Horizons stamped on persisted alerts
 
 > **Testing the live engine when the market is closed**: set `SIMULATE_STREAM=True`. Instead of the Massive WebSocket, a `MockStreamer` drives the `RuleEngine` with a synthetic random-walk tape (with occasional block trades) over a fixed 10-ticker universe, so the full ingestion → condition-matching → alert pipeline runs end-to-end with no API key and no open market. This is **opt-in only** — a missing API key never silently switches to simulation, so real misconfigurations stay loud. The dashboard logs `SIMULATE_STREAM on — MockStreamer driving the engine (NOT live data)` on boot.
 
+> **Frontend backend URL**: every API call reads from `import.meta.env.VITE_API_BASE` (see `frontend/.env.example`). Defaults to `http://localhost:8000/api/v1` for dev. Set this in `frontend/.env.local` for local overrides or in your deploy environment (Vercel/Netlify project settings) for production. Sibling vars: `VITE_BACKEND_ROOT` (root health probe) and `VITE_DISCORD_WEBHOOK_URL`.
+
 ---
 
 ## 🚀 Running the Services
@@ -314,7 +316,8 @@ marimo edit notebooks/darkpool_exploration.py
 | `GET` | `/dashboard/snapshot` | Live universe snapshot (sortable, paginated) |
 | `GET` | `/dashboard/stream` | SSE — per-trade `TickerState` deltas |
 | `GET` | `/dashboard/universe` | Active ticker list |
-| `GET` | `/dashboard/health` | Engine-health strip: tickers tracked/active, signals today, last-signal ts, feed tier |
+| `GET` | `/dashboard/health` | Engine-health strip: tickers tracked/active, signals today, last-signal ts, feed tier, market status, boot diagnostics |
+| `GET` | `/dashboard/trading-day?date=YYYY-MM-DD` | Returns `{is_trading_day, next_trading_day}` so the UI can warn on weekend/holiday picks |
 | `GET` | `/darkpool/summary` | Single-symbol TRF aggregates for a date |
 | `GET` | `/darkpool/trades` | Raw TRF tick log for a symbol/date |
 | `POST` | `/backtest/rules` | Signal-validator backtest → `{signals, signal_count, forward_return_stats, price_series}` |
